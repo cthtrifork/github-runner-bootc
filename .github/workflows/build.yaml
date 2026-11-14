@@ -24,7 +24,8 @@ permissions:
 concurrency:
   group: build-${{ github.ref }}
   # a label that starts nothing (the iso label, Renovate's labels) must not cancel a running build
-  cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && (github.event.action != 'labeled' || contains(fromJSON('["e2e","e2e-live","push"]'), github.event.label.name))) }}
+  # a push to main is never cancelled: its build is what publishes the image and the release
+  cancel-in-progress: ${{ github.event_name == 'pull_request' && (github.event.action != 'labeled' || contains(fromJSON('["e2e","e2e-live","push"]'), github.event.label.name)) }}
 
 env:
   TAG: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
@@ -33,8 +34,10 @@ env:
   PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.fork != true && (contains(github.event.pull_request.labels.*.name, 'push') || contains(github.event.pull_request.labels.*.name, 'e2e') || contains(github.event.pull_request.labels.*.name, 'e2e-live'))) }}
 
 jobs:
-  # A push to main builds, and so releases, only when the image changed. A PR also builds when the tests or the build
-  # workflow changed. The weekly run builds only when the base image is newer or the published image is 14 days old.
+  # A push to main builds, and so releases, only when the image files changed since the commit the published images were
+  # built from (so a cancelled or failed build is retried by the next push). A PR builds when the image files changed, or
+  # when the tests or the build workflow did. The weekly run builds only when the base image is newer or the published
+  # image is 14 days old.
   gate:
     name: Decide whether to build
     runs-on: ubuntu-latest
@@ -42,16 +45,18 @@ jobs:
     permissions:
       contents: read
       pull-requests: read # the files of the pull request
+      packages: read # the revision label of the published images
     outputs:
-      build: ${{ steps.gate.outputs.build == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || steps.changes.outputs.image == 'true' || (github.event_name == 'pull_request' && steps.changes.outputs.ci == 'true')) }}
+      build: ${{ steps.gate.outputs.build == 'true' && (github.event_name != 'pull_request' || steps.changes.outputs.image == 'true' || steps.changes.outputs.ci == 'true') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 0 # the gate compares HEAD with the commit the published image was built from
 
       - name: Changed files
         id: changes
-        if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+        if: ${{ github.event_name == 'pull_request' }}
         uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
         with:
           token: ${{ github.token }}
@@ -71,6 +76,7 @@ jobs:
         env:
           EVENT_NAME: ${{ github.event_name }}
           IMAGE: ghcr.io/${{ github.repository }}
+          OFFLINE_IMAGE: ghcr.io/${{ github.repository_owner }}/offline-${{ github.event.repository.name }}
           ACTOR: ${{ github.actor }}
           TOKEN: ${{ github.token }}
 
