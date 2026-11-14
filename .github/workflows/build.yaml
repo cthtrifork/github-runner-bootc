@@ -199,12 +199,13 @@ jobs:
         env:
           DIGEST: ${{ steps.build.outputs.digest }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VARIANT: ${{ matrix.variant }}
         run: | #sh
           crit=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy.json)
           high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy.json)
           os_scanned=$(jq '[.Results[]? | select(.Class=="os-pkgs")] | length' trivy.json)
           {
-            echo "### 🛡️ Trivy summary for ${{ matrix.variant }}"
+            echo "### 🛡️ Trivy summary for ${VARIANT}"
             echo ""
             echo "\`${IMAGE}@${DIGEST}\`"
             echo ""
@@ -243,6 +244,63 @@ jobs:
         with:
           path: trivy-comment.md
           header: "🛡️ Trivy summary for ${{ matrix.variant }}"
+
+      # Compare the PR image with the published :latest (size, layers, new/fixed CRITICAL/HIGH).
+      - name: Write image diff comment
+        id: diff
+        if: ${{ github.event_name == 'pull_request' && env.PUSH == 'true' }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VARIANT: ${{ matrix.variant }}
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+        run: | #sh
+          set -euo pipefail
+          if ! docker pull -q "$IMAGE:latest" > /dev/null 2>&1; then
+            echo "No $IMAGE:latest yet, skipping the baseline comparison"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          docker pull -q "$IMAGE@$DIGEST" > /dev/null
+          trivy image --scanners vuln --severity CRITICAL,HIGH --timeout 15m --format json \
+            --output latest_trivy.json "$IMAGE:latest"
+
+          base=$(docker image inspect "$IMAGE:latest" | jq '.[0]')
+          pr=$(docker image inspect "$IMAGE@$DIGEST" | jq '.[0]')
+          base_size=$(jq -r '.Size // 0' <<<"$base")
+          pr_size=$(jq -r '.Size // 0' <<<"$pr")
+          delta=$(( pr_size - base_size ))
+          delta_h=$(numfmt --to=iec --suffix=B "${delta#-}")
+          if   [[ $delta -gt 0 ]]; then trend="+${delta_h}"
+          elif [[ $delta -lt 0 ]]; then trend="-${delta_h}"
+          else trend="±0"; fi
+          ids='[.Results[]?.Vulnerabilities[]? | .VulnerabilityID] | unique[]?'
+          new=$(comm -13 <(jq -r "$ids" latest_trivy.json | sort) <(jq -r "$ids" trivy.json | sort))
+          fixed=$(comm -23 <(jq -r "$ids" latest_trivy.json | sort) <(jq -r "$ids" trivy.json | sort))
+          new_n=$(printf '%s\n' "$new" | grep -c . || true)
+          fixed_n=$(printf '%s\n' "$fixed" | grep -c . || true)
+          new_top=$(printf '%s\n' "$new" | head -n 5 | paste -sd, -)
+          [[ -z "$new_top" ]] && new_top="_none_"
+
+          {
+            echo "### 🧾 Image diff for ${VARIANT}"
+            echo ""
+            echo "**Base:** \`$IMAGE:latest\`"
+            echo "**PR:** \`$IMAGE@$DIGEST\`"
+            echo ""
+            echo "- Created: $(jq -r '.Created // "n/a"' <<<"$base") → $(jq -r '.Created // "n/a"' <<<"$pr")"
+            echo "- Size: $(numfmt --to=iec --suffix=B "$base_size") → $(numfmt --to=iec --suffix=B "$pr_size") (**${trend}**)"
+            echo "- Layers: $(jq -r '.RootFS.Layers | length' <<<"$base") → $(jq -r '.RootFS.Layers | length' <<<"$pr")"
+            echo "- Trivy HIGH/CRIT: +${new_n} / -${fixed_n} (new: ${new_top})"
+          } > image-diff.md
+
+      - name: Sticky PR comment (image diff)
+        if: ${{ steps.diff.outputs.exists == 'true' }}
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          path: image-diff.md
+          header: "🧾 Image diff for ${{ matrix.variant }}"
 
       - name: Generate SBOM
         if: ${{ env.PUSH == 'true' }}
