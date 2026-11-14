@@ -10,6 +10,9 @@ RUN dnf -y install --setopt=install_weak_deps=False \
         linux-firmware microcode_ctl smartmontools lm_sensors qemu-guest-agent \
     && dnf clean all
 
+# Fedora 45 keeps its repositories in /usr/share/dnf5/repos.d; bootc-image-builder reads /etc/yum.repos.d
+RUN cp /usr/share/dnf5/repos.d/fedora.repo /usr/share/dnf5/repos.d/fedora-updates.repo /etc/yum.repos.d/
+
 # Embedded as an OCI directory (a plain copy, no privileges needed) before anything that changes often, so updates reuse
 # its large layer. The tag must equal the Image= line of github-runner@.container (tests/check-image-refs.sh).
 ARG RUNNER_IMAGE=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
