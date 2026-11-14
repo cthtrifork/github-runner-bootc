@@ -1,0 +1,46 @@
+name: Boot the disk in QEMU
+description: Boots a raw disk headless with an SSH forward on port 2222 and waits until SSH answers.
+inputs:
+  disk:
+    description: Path of the raw disk
+    required: true
+  ssh_key:
+    description: Private key that is authorized for root
+    required: true
+  network:
+    description: "`restricted` (only the SSH forward works: the airgap test) or `open`"
+    default: restricted
+  memory:
+    description: Guest memory
+    default: 6G
+runs:
+  using: composite
+  steps:
+    - name: Install QEMU
+      shell: bash
+      run: sudo apt-get install -y --no-install-recommends -qq qemu-system-x86 socat
+
+    - name: Boot
+      shell: bash
+      env:
+        DISK: ${{ inputs.disk }}
+        MEMORY: ${{ inputs.memory }}
+        RESTRICT: ${{ inputs.network == 'restricted' && ',restrict=on' || '' }}
+      run: | #sh
+        [ -e /dev/kvm ] || echo "::warning::no /dev/kvm, QEMU will be slow"
+        sudo qemu-system-x86_64 -name bootc-vm -enable-kvm -cpu host -smp "$(nproc)" -m "$MEMORY" \
+          -drive if=virtio,file="$DISK",format=raw \
+          -netdev "user,id=n0${RESTRICT},hostfwd=tcp::2222-:22" -device virtio-net-pci,netdev=n0 \
+          -display none -monitor unix:/tmp/qemu-monitor-sock,server,nowait -serial file:out/serial.log -daemonize
+
+    - name: Wait for SSH
+      shell: bash
+      env:
+        SSH_KEY: ${{ inputs.ssh_key }}
+      run: | #sh
+        for _ in $(seq 1 120); do
+          ssh -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o LogLevel=ERROR \
+            -i "$SSH_KEY" -p 2222 root@localhost true 2>/dev/null && { echo "SSH is up"; exit 0; }
+          sleep 3
+        done
+        echo "::error::SSH did not come up"; exit 1

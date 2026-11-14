@@ -11,7 +11,7 @@ StartLimitIntervalSec=0
 [Container]
 # Same literal reference as github-runner.image. bootc pulls it into the bound store; Pull=never makes sure podman never
 # contacts a registry, so the unit also works airgapped.
-Image=ghcr.io/cthtrifork/talos-gitops/github-actions-runner:v0.11.0@sha256:86d54c1c6df0e0c8ba46c423735639cb6d26bb74e3c1653e221fd1dfa5094055
+Image=ghcr.io/cthtrifork/talos-gitops/github-actions-runner:v0.11.0
 Pull=never
 GlobalArgs=--storage-opt=additionalimagestore=/usr/lib/bootc/storage
 ContainerName=github-runner-%i

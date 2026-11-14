@@ -65,37 +65,13 @@ jobs:
           ssh-keygen -l -f authorized_keys >/dev/null || { echo "::error::authorized_keys must hold only public keys"; exit 1; }
           if grep -q 'PRIVATE KEY' authorized_keys; then echo "::error::that is a private key"; exit 1; fi
 
-      - name: More disk for container storage
-        uses: ublue-os/container-storage-action@dc1f4c8f17b672069e921f001132f7cf98a423a6 # main (the action has no tags) # zizmor: ignore[stale-action-refs]
-        with:
-          target-dir: /var/lib/containers
-
-      - name: Pull the image and the runner image into root containers-storage
-        env:
-          REGISTRY_PASSWORD: ${{ github.token }}
-        run: | #sh
-          set -euo pipefail
-          printf '%s' "$REGISTRY_PASSWORD" | sudo podman login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          sudo podman pull -q "${IMAGE_FULL}:${TAG}"
-          # The bound image must come from the image being installed, not from this checkout.
-          runner_ref="$(sudo podman run --rm "${IMAGE_FULL}:${TAG}" sed -n 's/^Image=//p' /usr/share/containers/systemd/github-runner.image)"
-          echo "bound runner image: $runner_ref"
-          sudo podman pull -q "$runner_ref"
-
       - name: Install to a raw disk
-        run: | #sh
-          set -euo pipefail
-          mkdir -p out
-          truncate -s "$DISK_SIZE" out/disk.raw
-          sudo podman run --rm --privileged --pid=host \
-            --security-opt label=type:unconfined_t \
-            -v /dev:/dev -v /run/udev:/run/udev:ro \
-            -v /var/lib/containers:/var/lib/containers \
-            -v "${PWD}/out:/output" \
-            -v "${PWD}/authorized_keys:/authorized_keys:ro" \
-            "${IMAGE_FULL}:${TAG}" \
-            bootc install to-disk --via-loopback --generic-image --filesystem xfs \
-              --root-ssh-authorized-keys /authorized_keys /output/disk.raw
+        uses: ./.github/actions/install-disk
+        with:
+          image: ${{ env.IMAGE_FULL }}:${{ env.TAG }}
+          authorized_keys_file: authorized_keys
+          disk_size: ${{ env.DISK_SIZE }}
+          token: ${{ github.token }}
 
       - name: Check that the runner image is on the disk
         run: | #sh

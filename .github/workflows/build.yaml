@@ -33,9 +33,14 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
-  IMAGE_FULL: ghcr.io/${{ github.repository }}
-  # The tier to run: the label on a PR (e2e-live implies e2e) or the dispatch input.
+  IMAGE: ghcr.io/${{ github.repository }}
+  # The tag the build pushes for this ref: pr-<n> on a PR, the branch name otherwise.
+  TAG: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+  # The test tier to run: the label on a PR (e2e-live implies e2e) or the dispatch input.
   TIER: ${{ (github.event_name == 'workflow_dispatch' && inputs.tier) || (contains(github.event.pull_request.labels.*.name, 'e2e-live') && 'e2e-live') || (contains(github.event.pull_request.labels.*.name, 'e2e') && 'e2e') || 'none' }}
+  # Publish from main, schedule and manual runs; from a PR only when a test tier or the `push` label asks for it (the
+  # e2e job pulls the image from the registry), and never from a fork (its token cannot write packages).
+  PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.fork != true && (contains(github.event.pull_request.labels.*.name, 'push') || contains(github.event.pull_request.labels.*.name, 'e2e') || contains(github.event.pull_request.labels.*.name, 'e2e-live'))) }}
 
 jobs:
   build:
@@ -48,92 +53,47 @@ jobs:
       contents: read
       packages: write # push the image to ghcr.io
     outputs:
-      tier: ${{ steps.vars.outputs.tier }}
-      tag: ${{ steps.vars.outputs.tag }}
-      pushed: ${{ steps.vars.outputs.push }}
+      tag: ${{ env.TAG }}
+      tier: ${{ env.TIER }}
+      pushed: ${{ env.PUSH }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Work out tags and what to push
-        id: vars
-        env:
-          EVENT: ${{ github.event_name }}
-          PR_NUMBER: ${{ github.event.pull_request.number }}
-          REF_NAME: ${{ github.ref_name }}
-          FORK: ${{ github.event.pull_request.head.repo.fork }}
-          HAS_PUSH_LABEL: ${{ contains(github.event.pull_request.labels.*.name, 'push') }}
-          RUN_NUMBER: ${{ github.run_number }}
-        run: | #sh
-          set -euo pipefail
-          if [ "$EVENT" = "pull_request" ]; then
-            tag="pr-${PR_NUMBER}"
-          else
-            tag="$(printf '%s' "$REF_NAME" | tr -c 'A-Za-z0-9_.-' '-')"
-          fi
-          unique="${tag}.${RUN_NUMBER}"
-          [ "${GITHUB_REF}" = "refs/heads/main" ] && unique="main-$(date -u +%Y%m%d)-${RUN_NUMBER}"
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
 
-          # Push from main and schedule; from a PR only when a test tier or the `push` label asks for it (the e2e job pulls
-          # the image from the registry), and never from a fork (its token cannot write packages).
-          push=false
-          case "$EVENT" in
-            push | schedule) push=true ;;
-            workflow_dispatch) push=true ;;
-            pull_request)
-              if [ "$FORK" != "true" ] && { [ "$TIER" != "none" ] || [ "$HAS_PUSH_LABEL" = "true" ]; }; then push=true; fi
-              ;;
-          esac
-          {
-            echo "tag=$tag"
-            echo "unique=$unique"
-            echo "push=$push"
-            echo "tier=$TIER"
-          } >> "$GITHUB_OUTPUT"
-          echo "TAG=$tag" >> "$GITHUB_ENV"
-          echo "UNIQUE=$unique" >> "$GITHUB_ENV"
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: ${{ env.PUSH == 'true' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
 
-      - name: Free disk space for the build
-        run: | #sh
-          sudo rm -rf /opt/hostedtoolcache /usr/local/lib/android /usr/share/dotnet || true
-          df -h /
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ env.TAG }}
+            type=raw,value=main-{{date 'YYYYMMDD'}}-${{ github.run_number }},enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            containers.bootc=1
+            org.opencontainers.image.licenses=Apache-2.0
 
-      - name: Check the image references
-        run: tests/check-image-refs.sh
-
-      - name: Build
-        run: | #sh
-          sudo podman build \
-            --format docker \
-            --label "org.opencontainers.image.source=https://github.com/${GITHUB_REPOSITORY}" \
-            --label "org.opencontainers.image.revision=${GITHUB_SHA}" \
-            --label "org.opencontainers.image.licenses=Apache-2.0" \
-            --label "containers.bootc=1" \
-            -f github-runner.containerfile \
-            -t "localhost/github-runner-bootc:${TAG}" .
-
-      - name: Log in to the registry
-        if: steps.vars.outputs.push == 'true'
-        env:
-          REGISTRY_PASSWORD: ${{ github.token }}
-        run: | #sh
-          printf '%s' "$REGISTRY_PASSWORD" | sudo podman login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-
-      - name: Push
-        id: push
-        if: steps.vars.outputs.push == 'true'
-        run: | #sh
-          set -euo pipefail
-          sudo podman push --digestfile digest.txt "localhost/github-runner-bootc:${TAG}" "docker://${IMAGE_FULL}:${TAG}"
-          digest="$(cat digest.txt)"
-          if [ "${GITHUB_REF}" = "refs/heads/main" ]; then
-            sudo skopeo copy --all \
-              "docker://${IMAGE_FULL}@${digest}" "docker://${IMAGE_FULL}:${UNIQUE}"
-            sudo skopeo copy --all \
-              "docker://${IMAGE_FULL}@${digest}" "docker://${IMAGE_FULL}:latest"
-          fi
-          echo "Pushed ${IMAGE_FULL}@${digest}" >> "$GITHUB_STEP_SUMMARY"
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: github-runner.containerfile
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false # a plain image manifest, not an index with an attestation
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
   # Boot the image in QEMU on a hosted runner and run tests/system-test.sh inside it.
   #   1. The network is restricted (only the SSH forward works), so everything has to work with no registry or internet:
@@ -151,113 +111,51 @@ jobs:
       packages: read # pull the image that the build job pushed
       actions: write # cancel the run when the VM fails, so the live job does not wait for a runner that never comes
     env:
-      TAG: ${{ needs.build.outputs.tag }}
-      SSH_OPTIONS: "-o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o ConnectTimeout=5 -o LogLevel=ERROR"
       LIVE: ${{ needs.build.outputs.tier == 'e2e-live' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: More disk for container storage
-        uses: ublue-os/container-storage-action@dc1f4c8f17b672069e921f001132f7cf98a423a6 # main (the action has no tags) # zizmor: ignore[stale-action-refs]
-        with:
-          target-dir: /var/lib/containers
-
-      - name: Install QEMU
-        run: | #sh
-          sudo apt-get update -qq
-          sudo apt-get install -y --no-install-recommends -qq qemu-system-x86 socat
-          ls -l /dev/kvm || echo "::warning::no /dev/kvm, QEMU will be slow"
-
-      - name: Pull the built image and the runner image into root containers-storage
-        env:
-          REGISTRY_PASSWORD: ${{ github.token }}
-        run: | #sh
-          set -euo pipefail
-          printf '%s' "$REGISTRY_PASSWORD" | sudo podman login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          sudo podman pull -q "${IMAGE_FULL}:${TAG}"
-          # bootc install copies the logically bound images from /var/lib/containers into the target disk
-          runner_ref="$(sed -n 's/^Image=//p' system_files/usr/share/containers/systemd/github-runner.image)"
-          sudo podman pull -q "$runner_ref"
-          sudo podman images
-
-      - name: Generate an ephemeral SSH key
-        run: | #sh
-          mkdir -p out
-          ssh-keygen -q -t ed25519 -N "" -f out/ci_ssh_key
-          cp out/ci_ssh_key.pub out/authorized_keys
+      - name: Ephemeral SSH key
+        run: mkdir -p out && ssh-keygen -q -t ed25519 -N "" -f out/ci_ssh_key && cp out/ci_ssh_key.pub out/authorized_keys
 
       - name: Install to a raw disk
-        run: | #sh
-          set -euo pipefail
-          truncate -s 60G out/disk.raw
-          sudo podman run --rm --privileged --pid=host \
-            --security-opt label=type:unconfined_t \
-            -v /dev:/dev -v /run/udev:/run/udev:ro \
-            -v /var/lib/containers:/var/lib/containers \
-            -v "${PWD}/out:/output" \
-            -v "${PWD}/out/authorized_keys:/authorized_keys:ro" \
-            "${IMAGE_FULL}:${TAG}" \
-            bootc install to-disk --via-loopback --generic-image --filesystem xfs \
-              --root-ssh-authorized-keys /authorized_keys /output/disk.raw
+        id: disk
+        uses: ./.github/actions/install-disk
+        with:
+          image: ${{ env.IMAGE }}:${{ env.TAG }}
+          authorized_keys_file: out/authorized_keys
+          token: ${{ github.token }}
 
       - name: Boot with a restricted network (airgap test)
-        run: | #sh
-          set -euo pipefail
-          sudo qemu-system-x86_64 -name bootc-offline -enable-kvm -cpu host -smp "$(nproc)" -m 6G \
-            -drive if=virtio,file=out/disk.raw,format=raw \
-            -netdev user,id=n0,restrict=on,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=n0 \
-            -display none -monitor unix:/tmp/qemu-monitor-sock,server,nowait \
-            -serial file:out/serial-offline.log -daemonize
+        uses: ./.github/actions/boot-vm
+        with:
+          disk: ${{ steps.disk.outputs.path }}
+          ssh_key: out/ci_ssh_key
+          network: restricted
 
-      - name: Wait for SSH
-        run: | #sh
-          read -ra SSH_OPTS <<<"$SSH_OPTIONS"
-          for _ in $(seq 1 120); do
-            if ssh "${SSH_OPTS[@]}" -i out/ci_ssh_key -p 2222 root@localhost true 2>/dev/null; then echo "SSH is up"; exit 0; fi
-            sleep 3
-          done
-          echo "::error::SSH did not come up"; exit 1
+      - name: System tests, offline
+        run: tests/vm-ssh.sh bash -s < tests/system-test.sh
 
-      - name: Run the system tests offline
-        run: | #sh
-          read -ra SSH_OPTS <<<"$SSH_OPTIONS"
-          ssh "${SSH_OPTS[@]}" -i out/ci_ssh_key -p 2222 root@localhost 'bash -s' < tests/system-test.sh
-
-      - name: Collect the offline journal and stop QEMU
-        if: always()
-        run: | #sh
-          read -ra SSH_OPTS <<<"$SSH_OPTIONS"
-          mkdir -p out/journal
-          ssh "${SSH_OPTS[@]}" -i out/ci_ssh_key -p 2222 root@localhost 'journalctl -b --no-pager -o short-precise' >out/journal/offline.log || true
-          echo quit | sudo socat - unix-connect:/tmp/qemu-monitor-sock || true
-          sleep 3
+      - name: Save the journal and stop the VM
+        if: ${{ always() }}
+        run: tests/vm-stop.sh offline
 
       - name: The offline journal has no registry lookups
-        run: | #sh
-          if grep -iE 'pinging container registry|unable to pull|Trying to pull' out/journal/offline.log; then
-            echo "::error::the booted image tried to reach a registry"; exit 1
-          fi
+        run: "! grep -iE 'pinging container registry|unable to pull|Trying to pull' out/journal/offline.log"
 
       # ---- live tier ----
       - name: Boot with a network (live tier)
         if: ${{ env.LIVE == 'true' }}
-        run: | #sh
-          set -euo pipefail
-          sudo qemu-system-x86_64 -name bootc-live -enable-kvm -cpu host -smp "$(nproc)" -m 8G \
-            -drive if=virtio,file=out/disk.raw,format=raw \
-            -netdev user,id=n0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=n0 \
-            -display none -monitor unix:/tmp/qemu-monitor-sock,server,nowait \
-            -serial file:out/serial-live.log -daemonize
-          read -ra SSH_OPTS <<<"$SSH_OPTIONS"
-          for _ in $(seq 1 120); do
-            ssh "${SSH_OPTS[@]}" -i out/ci_ssh_key -p 2222 root@localhost true 2>/dev/null && exit 0
-            sleep 3
-          done
-          echo "::error::SSH did not come up"; exit 1
+        uses: ./.github/actions/boot-vm
+        with:
+          disk: ${{ steps.disk.outputs.path }}
+          ssh_key: out/ci_ssh_key
+          network: open
+          memory: 8G
 
-      - name: Get a short-lived GitHub App token (to remove the test runner afterwards)
+      - name: GitHub App token (to remove the test runner afterwards)
         id: app-token
         if: ${{ env.LIVE == 'true' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -270,79 +168,36 @@ jobs:
 
       - name: Seed the test App and start the runner
         if: ${{ env.LIVE == 'true' }}
+        run: tests/live-test.sh seed
         env:
+          RUN_ID: ${{ github.run_id }}
           E2E_APP_ID: ${{ vars.E2E_APP_ID }}
           E2E_INSTALLATION_ID: ${{ vars.E2E_INSTALLATION_ID }}
           E2E_APP_PRIVATE_KEY: ${{ secrets.E2E_APP_PRIVATE_KEY }}
-          RUN_ID: ${{ github.run_id }}
-        run: | #sh
-          set -euo pipefail
-          read -ra SSH_OPTS <<<"$SSH_OPTIONS"
-          # the key goes over stdin, never on a command line
-          printf '%s\n' "$E2E_APP_PRIVATE_KEY" | ssh "${SSH_OPTS[@]}" -i out/ci_ssh_key -p 2222 root@localhost \
-            "github-runner-seed-app --scope repo:${GITHUB_REPOSITORY} --app-id ${E2E_APP_ID} --installation-id ${E2E_INSTALLATION_ID} --labels self-hosted,Linux,X64,bootc,e2e-${RUN_ID}"
 
       - name: Wait until the live job has run on the VM
         if: ${{ env.LIVE == 'true' }}
+        run: tests/live-test.sh wait
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           RUN_ID: ${{ github.run_id }}
-        run: | #sh
-          set -euo pipefail
-          # The live job (below) runs on the VM's runner and finishes the run's `live-job` job. Wait for it, then check that the
-          # runner container was replaced by a fresh one (one job per container).
-          for _ in $(seq 1 120); do
-            state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" --jq '[.jobs[] | select(.name=="live job") | .conclusion] | first // ""')"
-            [ -n "$state" ] && break
-            sleep 15
-          done
-          echo "live job conclusion: ${state:-none}"
-          [ "$state" = "success" ]
-          read -ra SSH_OPTS <<<"$SSH_OPTIONS"
-          # after its single job the container exits and systemd starts a fresh one, which mints a second JIT config
-          for _ in $(seq 1 24); do
-            mints="$(ssh "${SSH_OPTS[@]}" -i out/ci_ssh_key -p 2222 root@localhost \
-              "journalctl -u github-runner@1.service --no-pager | grep -c 'JIT runner configuration minted'" || true)"
-            echo "JIT configs minted so far: ${mints:-0}"
-            [ "${mints:-0}" -ge 2 ] && exit 0
-            sleep 5
-          done
-          echo "::error::the runner container was not replaced after its job"; exit 1
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Collect the live journal, remove test runners and stop QEMU
+      - name: Remove the test runner and stop the VM
         if: ${{ always() && env.LIVE == 'true' }}
+        run: tests/live-test.sh cleanup; tests/vm-stop.sh live
         env:
-          GH_TOKEN: ${{ steps.app-token.outputs.token }}
           RUN_ID: ${{ github.run_id }}
-        run: | #sh
-          read -ra SSH_OPTS <<<"$SSH_OPTIONS"
-          mkdir -p out/journal
-          ssh "${SSH_OPTS[@]}" -i out/ci_ssh_key -p 2222 root@localhost 'journalctl -b --no-pager -o short-precise' >out/journal/live.log || true
-          echo quit | sudo socat - unix-connect:/tmp/qemu-monitor-sock || true
-          # Remove anything still registered with this run's label, whatever happened.
-          if [ -n "${GH_TOKEN:-}" ]; then
-            gh api "repos/${GITHUB_REPOSITORY}/actions/runners" --paginate \
-              --jq ".runners[] | select(.labels[].name == \"e2e-${RUN_ID}\") | .id" \
-              | xargs -r -I{} gh api -X DELETE "repos/${GITHUB_REPOSITORY}/actions/runners/{}" || true
-          fi
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
 
-      - name: Summary
-        if: always()
-        run: | #sh
-          {
-            echo "### E2E journals"
-            for f in out/journal/*.log; do
-              [ -f "$f" ] || continue
-              echo "<details><summary>${f##*/}</summary>"; echo; echo '```'; tail -n 200 "$f"; echo '```'; echo "</details>"
-            done
-          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Journals in the summary
+        if: ${{ always() }}
+        run: for f in out/journal/*.log; do printf '<details><summary>%s</summary>\n\n```\n' "$f"; tail -n 200 "$f"; printf '```\n</details>\n'; done >> "$GITHUB_STEP_SUMMARY"
 
       - name: Cancel the run when the VM test failed
         if: ${{ failure() && env.LIVE == 'true' }}
+        run: gh run cancel "$GITHUB_RUN_ID" || true
         env:
           GH_TOKEN: ${{ github.token }}
-          RUN_ID: ${{ github.run_id }}
-        run: gh run cancel "$RUN_ID" -R "$GITHUB_REPOSITORY" || true
 
   # Runs on the runner the VM above registers: the unique label means no other workflow can land on it.
   live-job:
@@ -355,16 +210,7 @@ jobs:
       contents: read
     steps:
       - name: Where am I running
-        run: | #sh
-          id
-          uname -a
-          cat /etc/os-release | head -3
-          podman info --format '{{.Host.OCIRuntime.Name}} {{.Store.GraphDriverName}}'
+        run: id && uname -a && podman info --format '{{.Host.OCIRuntime.Name}} {{.Store.GraphDriverName}}'
 
       - name: Podman works inside the runner
-        run: | #sh
-          set -euo pipefail
-          printf 'FROM scratch\nCOPY hello /hello\n' > Containerfile
-          echo hello > hello
-          buildah bud -t localhost/live-test:1 . >/dev/null
-          podman images localhost/live-test
+        run: printf 'FROM scratch\nCOPY hello /hello\n' > Containerfile && echo hello > hello && buildah bud -t localhost/live-test:1 . && podman images localhost/live-test

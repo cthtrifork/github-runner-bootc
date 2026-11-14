@@ -1,8 +1,8 @@
-# syntax=docker/dockerfile:1.22@sha256:4a43a54dd1fedceb30ba47e76cfcf2b47304f4161c0caeac2db1c61804ea3c91
+# syntax=docker/dockerfile:1.29@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
 # Bootc host for ephemeral GitHub Actions runners. Contains no secrets: the GitHub App credentials are seeded on the
 # running host (github-runner-seed-app). The runner itself is a container (a logically bound image, so the host needs no
 # registry at boot).
-FROM quay.io/fedora/fedora-bootc:44
+FROM quay.io/fedora/fedora-bootc:45
 
 # podman and friends run the Quadlet container; jq/openssl/curl mint the JIT config; skopeo is for debugging mirrors;
 # firmware and microcode are for bare metal; qemu-guest-agent is a no-op unless the host is a VM; chrony keeps time (point

@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # The runner image is declared twice: github-runner.image (read by bootc to bind it) and github-runner@.container (read by
-# podman to run it). Both must be the same digest-pinned reference, or the unit would run an image that is not bound.
+# podman to run it). Both must be the same version-tagged reference, or the unit would run an image that is not bound.
 set -euo pipefail
 
 dir="${1:-system_files/usr/share/containers/systemd}"
@@ -9,7 +9,9 @@ unit_ref="$(sed -n 's/^Image=//p' "$dir/github-runner@.container")"
 
 [[ -n "$image_ref" ]] || { echo "no Image= in github-runner.image" >&2; exit 1; }
 [[ "$image_ref" == "$unit_ref" ]] || { echo "Image= differs: image='$image_ref' unit='$unit_ref'" >&2; exit 1; }
-[[ "$image_ref" == *@sha256:* ]] || { echo "Image= is not pinned by digest: $image_ref" >&2; exit 1; }
+# a version tag, not a digest and not latest (see the comment in github-runner.image)
+[[ "$image_ref" == *@sha256:* ]] && { echo "Image= must not use a digest: $image_ref" >&2; exit 1; }
+[[ "$image_ref" =~ :v[0-9]+\.[0-9]+\.[0-9]+$ ]] || { echo "Image= needs an exact version tag like :v1.2.3: $image_ref" >&2; exit 1; }
 grep -qx 'Pull=never' "$dir/github-runner@.container" || { echo "unit must set Pull=never" >&2; exit 1; }
 bound=/usr/lib/bootc/bound-images.d/github-runner.image
 grep -q "ln -s /usr/share/containers/systemd/github-runner.image $bound" github-runner.containerfile \

@@ -1,0 +1,4 @@
+rules:
+  # `uses: ./.github/actions/...` is the form actionlint, Renovate and the docs know; `$/` is not needed here.
+  self-repository:
+    disable: true
