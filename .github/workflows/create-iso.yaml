@@ -1,8 +1,8 @@
 name: Create ISO
 
-# Builds an installer ISO of a published image with bootc-image-builder and uploads it to Azure blob storage (secret
-# AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER). The `iso` PR label builds without uploading; the
-# PR image must exist already (labels `push` or `e2e` publish it).
+# Builds an installer ISO of a published image with bootc-image-builder. A manual run uploads it to Azure blob storage
+# (secret AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER) and skips the upload while the secret is
+# not set. The `iso` PR label only builds; the PR image must exist already (labels `push` or `e2e` publish it).
 on:
   workflow_dispatch:
     inputs:
@@ -76,8 +76,12 @@ jobs:
         run: 'echo "ISO $(basename "$ISO") is $(( $(stat -c %s "$ISO") / 1048576 )) MiB" | tee -a "$GITHUB_STEP_SUMMARY"'
 
       - name: Upload to Azure blob storage
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && env.AZURE_STORAGE_CONNECTION_STRING != '' }}
         run: az storage blob upload --container-name "$AZURE_STORAGE_CONTAINER" --file "$ISO" --name "github-runner-${TAG}-$(date -u +%Y%m%d).iso" --overwrite true
         env:
           ISO: ${{ steps.bib.outputs.output-path }}
           AZURE_STORAGE_CONTAINER: ${{ vars.AZURE_STORAGE_CONTAINER }}
+
+      - name: Upload skipped
+        if: ${{ github.event_name == 'workflow_dispatch' && env.AZURE_STORAGE_CONNECTION_STRING == '' }}
+        run: echo "::notice::AZURE_STORAGE_CONNECTION_STRING is not set, the ISO was built but not uploaded"

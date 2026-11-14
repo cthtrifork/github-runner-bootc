@@ -1,7 +1,8 @@
 name: Create disk image
 
-# Builds a bootable raw disk image of a published image and uploads it, zstd compressed, to Azure blob storage (secret
-# AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER). The `disk` PR label builds without uploading.
+# Builds a bootable raw disk image of a published image, zstd compressed. A manual run uploads it to Azure blob storage
+# (secret AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER) and skips the upload while the secret is not
+# set. The `disk` PR label only builds.
 on:
   workflow_dispatch:
     inputs:
@@ -95,7 +96,7 @@ jobs:
           " >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload to Azure blob storage
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && env.AZURE_STORAGE_CONNECTION_STRING != '' }}
         run: | #sh
           set -euo pipefail
           name="github-runner-${TAG}-$(date -u +%Y%m%d).raw.zst"
@@ -103,3 +104,7 @@ jobs:
           echo "Uploaded blob \`$name\` to container \`$AZURE_STORAGE_CONTAINER\`" >> "$GITHUB_STEP_SUMMARY"
         env:
           AZURE_STORAGE_CONTAINER: ${{ vars.AZURE_STORAGE_CONTAINER }}
+
+      - name: Upload skipped
+        if: ${{ github.event_name == 'workflow_dispatch' && env.AZURE_STORAGE_CONNECTION_STRING == '' }}
+        run: echo "::notice::AZURE_STORAGE_CONNECTION_STRING is not set, the disk image was built but not uploaded"
