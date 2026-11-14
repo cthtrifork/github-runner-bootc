@@ -46,7 +46,7 @@ jobs:
       contents: read
       packages: read # the revision label of the published images
     outputs:
-      build: ${{ steps.gate.outputs.build == 'true' && (github.event_name != 'pull_request' || steps.changes.outputs.image_any_changed == 'true' || steps.changes.outputs.ci_any_changed == 'true') }}
+      build: ${{ (github.event_name == 'push' && (steps.gate.outputs.build == 'true' || steps.pushed.outputs.any_changed == 'true')) || (github.event_name != 'push' && steps.gate.outputs.build == 'true' && (github.event_name != 'pull_request' || steps.changes.outputs.image_any_changed == 'true' || steps.changes.outputs.ci_any_changed == 'true')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -77,6 +77,17 @@ jobs:
           OFFLINE_IMAGE: ghcr.io/${{ github.repository_owner }}/offline-${{ github.event.repository.name }}
           ACTOR: ${{ github.actor }}
           TOKEN: ${{ github.token }}
+
+      # the image files that changed since the older published image was built, so a lost build is retried
+      - name: Changed files since the published image
+        id: pushed
+        if: ${{ github.event_name == 'push' && steps.gate.outputs.base != '' }}
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        with:
+          base_sha: ${{ steps.gate.outputs.base }}
+          files: |
+            github-runner.containerfile
+            system_files/**
 
   build:
     name: Build ${{ matrix.variant }} image
