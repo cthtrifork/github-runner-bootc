@@ -1,0 +1,47 @@
+#!/usr/bin/bash
+# Nightly: stage an OS update with `bootc upgrade` and, only when one is staged, drain the runners and reboot, so a reboot
+# never kills a job. Offline or airgapped hosts just log the failed fetch and try again the next night.
+set -uo pipefail
+
+drain=/run/github-runner/draining
+timeout_s="${DRAIN_TIMEOUT_SECONDS:-21600}"
+
+if ! bootc upgrade; then
+    echo "bootc upgrade failed (offline or registry mirror down); will retry at the next run"
+    exit 0
+fi
+
+staged="$(bootc status --json | jq -r '.status.staged.image.imageDigest // empty')"
+if [[ -z "$staged" ]]; then
+    echo "No staged update"
+    exit 0
+fi
+echo "Update staged ($staged); draining runners"
+
+install -d -m 0700 /run/github-runner
+touch "$drain"
+trap 'rm -f "$drain"' EXIT
+
+deadline=$((SECONDS + timeout_s))
+while ((SECONDS < deadline)); do
+    busy=0
+    while read -r name; do
+        [[ -n "$name" ]] || continue
+        # An idle runner waits for a job and has no Runner.Worker process; stop those, wait for the busy ones.
+        if podman exec "$name" pgrep -f Runner.Worker >/dev/null 2>&1; then
+            busy=1
+        else
+            systemctl stop "${name/github-runner-/github-runner@}.service" || true
+        fi
+    done < <(podman ps --format '{{.Names}}' --filter 'name=^github-runner-')
+    ((busy == 0)) && break
+    sleep 30
+done
+
+if ((busy != 0)); then
+    echo "Runners still busy after ${timeout_s}s; not rebooting, retry at the next run"
+    exit 0
+fi
+
+echo "All runners idle; rebooting into the new deployment"
+systemctl reboot

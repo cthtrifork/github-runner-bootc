@@ -1,0 +1,58 @@
+#!/usr/bin/bash
+# Store the GitHub App credentials the runners register with, then start the runner instances.
+#   sudo github-runner-seed-app --scope repo:owner/name|org:name --app-id N --installation-id N [--instances 1] \
+#        [--labels a,b,c] [--runner-group-id 1] [--api-url https://github.example/api/v3] [private-key.pem]
+# The key is read from a file or stdin, never from an argument, so it stays out of shell history and `ps`.
+set -euo pipefail
+
+[[ $EUID -eq 0 ]] || { echo "Run as root: sudo $0 ..." >&2; exit 1; }
+
+scope="" app_id="" installation_id="" instances=1 labels="self-hosted,Linux,X64,bootc" group=1 api_url="https://api.github.com" keyfile=""
+while (($#)); do
+    case "$1" in
+    --scope) scope="$2"; shift 2 ;;
+    --app-id) app_id="$2"; shift 2 ;;
+    --installation-id) installation_id="$2"; shift 2 ;;
+    --instances) instances="$2"; shift 2 ;;
+    --labels) labels="$2"; shift 2 ;;
+    --runner-group-id) group="$2"; shift 2 ;;
+    --api-url) api_url="$2"; shift 2 ;;
+    -h | --help) sed -n '2,5p' "$0"; exit 0 ;;
+    *) keyfile="$1"; shift ;;
+    esac
+done
+
+[[ "$scope" =~ ^(repo:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+|org:[A-Za-z0-9_.-]+)$ ]] || { echo "--scope must be repo:<owner>/<repo> or org:<org>" >&2; exit 1; }
+[[ "$app_id" =~ ^[0-9]+$ ]] || { echo "--app-id must be a number" >&2; exit 1; }
+[[ "$installation_id" =~ ^[0-9]+$ ]] || { echo "--installation-id must be a number" >&2; exit 1; }
+[[ "$instances" =~ ^[1-9][0-9]*$ ]] || { echo "--instances must be a positive number" >&2; exit 1; }
+[[ "$group" =~ ^[0-9]+$ ]] || { echo "--runner-group-id must be a number" >&2; exit 1; }
+[[ "$labels" =~ ^[A-Za-z0-9_.,:-]+$ ]] || { echo "--labels must be a comma separated list" >&2; exit 1; }
+[[ "$api_url" =~ ^https://[A-Za-z0-9./_:-]+$ ]] || { echo "--api-url must be an https URL" >&2; exit 1; }
+
+key="$(cat "${keyfile:-/dev/stdin}")"
+openssl pkey -noout <<<"$key" 2>/dev/null || { echo "That is not a valid PEM private key." >&2; exit 1; }
+
+dir=/etc/github-runner
+install -d -m 0700 -o root -g root "$dir"
+write() { # <name> <content>
+    local tmp
+    tmp="$(mktemp "$dir/.$1.XXXXXX")"
+    chmod 0600 "$tmp"
+    printf '%s\n' "$2" >"$tmp"
+    mv -f "$tmp" "$dir/$1"
+}
+write app-id "$app_id"
+write installation-id "$installation_id"
+write private-key.pem "$key"
+write config "SCOPE=$scope
+LABELS=$labels
+RUNNER_GROUP_ID=$group
+API_URL=$api_url
+MIN_FREE_GB=10"
+echo "Credentials stored in $dir (root-only, 0600)."
+
+for ((i = 1; i <= instances; i++)); do
+    systemctl enable --now "github-runner@${i}.service"
+done
+echo "Started $instances runner instance(s). Follow with: journalctl -fu 'github-runner@*'"

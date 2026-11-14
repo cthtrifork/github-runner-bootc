@@ -1,0 +1,16 @@
+#!/usr/bin/bash
+# Weekly and on demand: remove stopped containers and unused images from the per-instance storage of runners that are not
+# running. The host-wide bound image store is owned by bootc and never touched.
+set -uo pipefail
+
+for dir in /var/lib/github-runner/[0-9]*; do
+    [[ -d "$dir" ]] || continue
+    inst="${dir##*/}"
+    if systemctl is-active --quiet "github-runner@${inst}.service"; then
+        echo "Skipping $inst: running"
+        continue
+    fi
+    echo "Pruning $dir"
+    find "$dir/containers" "$dir/rootless" -mindepth 1 -maxdepth 1 -mtime +7 -exec rm -rf {} + 2>/dev/null || true
+    rm -rf "${dir:?}/var-tmp" "${dir:?}/work"
+done

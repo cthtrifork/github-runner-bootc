@@ -1,0 +1,142 @@
+name: Create disk image
+
+# Builds a bootable raw disk image of the published bootc image for bare metal (write it to a disk with dd or
+# `bootc install`), including the logically bound runner image, so the host can run without any registry.
+# An Anaconda ISO is deliberately not offered: bootc does not support logically bound images with Anaconda, so an ISO
+# would boot without the runner image.
+#
+# GitHub release assets are limited to 2 GiB per file, so the compressed image is split in parts of 1900 MiB;
+# join them with `cat disk.raw.zst.part-* | zstd -d > disk.raw`.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to install (latest, main-<date>-<n>, pr-<n>)"
+        required: true
+        default: latest
+        type: string
+      authorized_keys:
+        description: "Public SSH key(s) for root, one per line (public keys only, never a private key)"
+        required: true
+        type: string
+      disk_size:
+        description: "Size of the raw disk"
+        required: false
+        default: 80G
+        type: string
+      release:
+        description: "Attach the parts to a GitHub release (otherwise: workflow artifact only)"
+        required: false
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+
+concurrency:
+  group: create-disk-image
+  cancel-in-progress: false
+
+jobs:
+  disk:
+    name: Raw disk image
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: write # create the release and upload the parts
+      packages: read # pull the image
+    env:
+      IMAGE_FULL: ghcr.io/${{ github.repository }}
+      TAG: ${{ inputs.tag }}
+      DISK_SIZE: ${{ inputs.disk_size }}
+      AUTHORIZED_KEYS: ${{ inputs.authorized_keys }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Validate the inputs
+        run: | #sh
+          set -euo pipefail
+          [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "::error::bad tag"; exit 1; }
+          [[ "$DISK_SIZE" =~ ^[0-9]+G$ ]] || { echo "::error::disk_size must look like 80G"; exit 1; }
+          printf '%s\n' "$AUTHORIZED_KEYS" > authorized_keys
+          # public keys only: ssh-keygen -l fails on a private key or on garbage
+          ssh-keygen -l -f authorized_keys >/dev/null || { echo "::error::authorized_keys must hold only public keys"; exit 1; }
+          if grep -q 'PRIVATE KEY' authorized_keys; then echo "::error::that is a private key"; exit 1; fi
+
+      - name: More disk for container storage
+        uses: ublue-os/container-storage-action@dc1f4c8f17b672069e921f001132f7cf98a423a6 # main (the action has no tags) # zizmor: ignore[stale-action-refs]
+        with:
+          target-dir: /var/lib/containers
+
+      - name: Pull the image and the runner image into root containers-storage
+        env:
+          REGISTRY_PASSWORD: ${{ github.token }}
+        run: | #sh
+          set -euo pipefail
+          printf '%s' "$REGISTRY_PASSWORD" | sudo podman login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          sudo podman pull -q "${IMAGE_FULL}:${TAG}"
+          # The bound image must come from the image being installed, not from this checkout.
+          runner_ref="$(sudo podman run --rm "${IMAGE_FULL}:${TAG}" sed -n 's/^Image=//p' /usr/share/containers/systemd/github-runner.image)"
+          echo "bound runner image: $runner_ref"
+          sudo podman pull -q "$runner_ref"
+
+      - name: Install to a raw disk
+        run: | #sh
+          set -euo pipefail
+          mkdir -p out
+          truncate -s "$DISK_SIZE" out/disk.raw
+          sudo podman run --rm --privileged --pid=host \
+            --security-opt label=type:unconfined_t \
+            -v /dev:/dev -v /run/udev:/run/udev:ro \
+            -v /var/lib/containers:/var/lib/containers \
+            -v "${PWD}/out:/output" \
+            -v "${PWD}/authorized_keys:/authorized_keys:ro" \
+            "${IMAGE_FULL}:${TAG}" \
+            bootc install to-disk --via-loopback --generic-image --filesystem xfs \
+              --root-ssh-authorized-keys /authorized_keys /output/disk.raw
+
+      - name: Check that the runner image is on the disk
+        run: | #sh
+          set -euo pipefail
+          dev="$(sudo losetup --find --show --partscan out/disk.raw)"
+          trap 'sudo umount -R /mnt/disk 2>/dev/null || true; sudo losetup -d "$dev" || true' EXIT
+          sudo mkdir -p /mnt/disk
+          root="$(lsblk -lnpo NAME,FSTYPE "$dev" | awk '$2=="xfs"{print $1}' | tail -1)"
+          sudo mount -o ro,nouuid "$root" /mnt/disk
+          sudo find /mnt/disk/ostree/deploy -maxdepth 4 -path '*usr/lib/bootc/storage*' -prune -print | head -3
+          sudo du -sh /mnt/disk/ostree/repo 2>/dev/null || true
+          test -n "$(sudo find /mnt/disk -maxdepth 6 -type d -path '*/usr/lib/bootc/storage' -print -quit)" \
+            || { echo "::error::the bound image store is missing from the disk image"; exit 1; }
+
+      - name: Compress and split
+        run: | #sh
+          set -euo pipefail
+          cd out
+          zstd -T0 -3 --sparse -o disk.raw.zst disk.raw
+          rm -f disk.raw
+          split -b 1900M -d disk.raw.zst disk.raw.zst.part-
+          rm -f disk.raw.zst
+          sha256sum disk.raw.zst.part-* > SHA256SUMS
+          ls -lh
+
+      - name: Upload as a workflow artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: github-runner-disk-${{ inputs.tag }}
+          path: out/disk.raw.zst.part-*
+          retention-days: 14
+          compression-level: 0
+
+      - name: Attach to a GitHub release
+        if: ${{ inputs.release }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: Raw bootc disk image of ${{ inputs.tag }} with the bound runner image. Join with `cat disk.raw.zst.part-* | zstd -d > disk.raw`, check with SHA256SUMS, write it to a disk with dd.
+        run: | #sh
+          set -euo pipefail
+          rel="disk-${TAG}-$(date -u +%Y%m%d-%H%M)"
+          gh release create "$rel" --repo "$GITHUB_REPOSITORY" --title "Disk image ${TAG}" --notes "$NOTES"
+          gh release upload "$rel" --repo "$GITHUB_REPOSITORY" out/disk.raw.zst.part-* out/SHA256SUMS
+          echo "Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${rel}" >> "$GITHUB_STEP_SUMMARY"

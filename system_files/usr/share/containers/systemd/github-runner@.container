@@ -1,0 +1,59 @@
+[Unit]
+Description=GitHub Actions runner %i (ephemeral, one job per container)
+Documentation=https://github.com/cthtrifork/github-runner-bootc
+Wants=network-online.target
+After=network-online.target
+# Idle until github-runner-seed-app has stored the GitHub App credentials.
+ConditionPathExists=/etc/github-runner/private-key.pem
+# Keep retrying: a failed JIT mint (no route to GitHub, clock not set yet) must never end in "start-limit-hit".
+StartLimitIntervalSec=0
+
+[Container]
+# Same literal reference as github-runner.image. bootc pulls it into the bound store; Pull=never makes sure podman never
+# contacts a registry, so the unit also works airgapped.
+Image=ghcr.io/cthtrifork/talos-gitops/github-actions-runner:v0.11.0@sha256:86d54c1c6df0e0c8ba46c423735639cb6d26bb74e3c1653e221fd1dfa5094055
+Pull=never
+GlobalArgs=--storage-opt=additionalimagestore=/usr/lib/bootc/storage
+ContainerName=github-runner-%i
+Exec=/home/runner/run.sh
+User=1001
+Group=1001
+# ACTIONS_RUNNER_INPUT_JITCONFIG, written fresh by mint-jitconfig before every start (same variable ARC injects).
+EnvironmentFile=/run/github-runner/%i.env
+Environment=STORAGE_DRIVER=overlay
+Environment=BUILDAH_ISOLATION=chroot
+Environment=BUILDAH_LAYERS=true
+Environment=RUNNER_UPDATE_CA_CERTS=1
+
+# The image runs rootful podman/buildah inside (as ARC's arc-ubuntu-podman pod does), so it needs a privileged container.
+# A job is therefore root on this host: attach the runner only to private/trusted repositories. See the README.
+PodmanArgs=--privileged
+
+# Per instance: parallel builds on one containers storage corrupt it.
+Volume=/var/lib/github-runner/%i/work:/home/runner/_work
+Volume=/var/lib/github-runner/%i/containers:/var/lib/containers/storage
+Volume=/var/lib/github-runner/%i/rootless:/home/runner/.local/share/containers/storage
+Volume=/var/lib/github-runner/%i/dnf:/var/cache/dnf
+Volume=/var/lib/github-runner/%i/dnf:/home/runner/.cache/dnf
+Volume=/var/lib/github-runner/%i/cache:/home/runner/.cache/tmp
+Volume=/var/lib/github-runner/%i/var-tmp:/var/tmp
+Tmpfs=/tmp
+# Host devices for `bootc install --via-loopback` jobs (the same mounts ARC uses as host-dev / host-udev).
+Volume=/dev:/host-dev
+Volume=/run/udev:/run/udev:ro
+# Site configuration (private CA, registry mirrors, proxies) goes in a drop-in,
+# /etc/containers/systemd/github-runner@.container.d/10-site.conf, with extra Volume=/Environment= lines (see the README).
+
+[Service]
+Environment=INSTANCE=%i
+# Fresh registration and clean directories for every container; fails (and is retried) while the host drains for an update.
+ExecStartPre=/usr/libexec/github-runner/prepare-instance %i
+ExecStartPre=/usr/libexec/github-runner/mint-jitconfig %i
+ExecStopPost=/usr/bin/rm -f /run/github-runner/%i.env
+# The runner exits after its single job, so a restart is the normal cycle.
+Restart=always
+RestartSec=5s
+TimeoutStartSec=300
+
+[Install]
+WantedBy=multi-user.target

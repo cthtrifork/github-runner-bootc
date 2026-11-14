@@ -17,6 +17,7 @@ on:
       - "*.containerfile"
       - "build_files/**"
       - "tests/**"
+      - "system_files/**"
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.ref }}
@@ -70,9 +71,21 @@ jobs:
       - name: Run shellcheck (errors only)
         run: | #sh
           # only scripts with a bash/sh shebang (skips sourced profile.d snippets and vendored zsh code)
-          mapfile -t files < <(git ls-files '*.sh' | while read -r f; do head -n1 "$f" | grep -qE '^#!.*(ba)?sh' && echo "$f"; done)
+          mapfile -t files < <(git ls-files '*.sh' 'system_files/usr/libexec/*' 'system_files/usr/bin/*' | while read -r f; do head -n1 "$f" | grep -qE '^#!.*(ba)?sh' && echo "$f"; done)
           [ "${#files[@]}" -gt 0 ] || { echo "No shell scripts yet"; exit 0; }
           shellcheck --severity=error "${files[@]}"
+
+  image-refs:
+    name: image refs
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: The bound image and the unit run the same digest
+        run: tests/check-image-refs.sh
 
   hadolint:
     name: hadolint
