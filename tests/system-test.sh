@@ -27,10 +27,16 @@ if systemctl is-active --quiet 'github-runner@1.service'; then
     exit 1
 fi
 
-echo "--- embedded runner image (works without a registry) ---"
+echo "--- runner image ---"
 ref="$(sed -n 's/^Image=//p' '/usr/share/containers/systemd/github-runner@.container')"
 echo "runner image: $ref"
-test -d /usr/share/github-runner/runner-image
+# the offline variant embeds the image; the other one pulls it on the first boot (the e2e gives that VM a network)
+if [ -e /usr/share/github-runner/offline ]; then
+    echo "variant: offline"
+    test -d /usr/share/github-runner/runner-image
+else
+    echo "variant: default"
+fi
 grep -qx 'Pull=never' '/usr/share/containers/systemd/github-runner@.container'
 systemctl is-enabled --quiet github-runner-image-load.service
 systemctl start github-runner-image-load.service

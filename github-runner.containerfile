@@ -1,7 +1,8 @@
 # syntax=docker/dockerfile:1.29@sha256:572cebbc2b15e6f84c077742952674889cb63cd5e9b80abdffcbe587b6f19183
 # Bootc host for ephemeral GitHub Actions runners. Contains no secrets: the GitHub App credentials are seeded on the
-# running host (github-runner-seed-app). The runner itself is a container whose image is embedded in this image, so the
-# host needs no registry or network and any installer (ISO, raw disk, bootc switch) carries it.
+# running host (github-runner-seed-app). The runner itself is a container. Two variants are built from this file:
+#   github-runner-bootc          pulls the runner image once, on the first boot (a registry or a mirror must be reachable)
+#   offline-github-runner-bootc  embeds the runner image (EMBED_RUNNER_IMAGE=true), so the host needs no registry or network
 FROM quay.io/fedora/fedora-bootc:45
 
 # podman and friends run the Quadlet container; jq/openssl/curl mint the JIT config; skopeo is for debugging mirrors;
@@ -14,17 +15,22 @@ RUN dnf -y install --setopt=install_weak_deps=False \
         linux-firmware microcode_ctl smartmontools lm_sensors qemu-guest-agent \
     && dnf clean all
 
-# The runner image (the one the ARC scale sets use), embedded as an OCI directory: a plain file copy that needs no
-# privileges at build time. github-runner-image-load.service loads it into the host's container storage at first boot.
-# It comes right after the packages and before anything that changes often, so its (large) layer is reused by updates.
+# The runner image (the one the ARC scale sets use). The offline variant embeds it as an OCI directory: a plain file copy
+# that needs no privileges at build time. github-runner-image-load.service loads it into the host's container storage at
+# first boot (the other variant pulls it there instead). It comes right after the packages and before anything that
+# changes often, so its (large) layer is reused by updates.
 # Keep the tag equal to the Image= line of github-runner@.container (tests/check-image-refs.sh).
 ARG RUNNER_IMAGE=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
 ARG RUNNER_IMAGE_TAG=v0.11.0 # renovate: datasource=docker depName=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
+ARG EMBED_RUNNER_IMAGE=false
 RUN mkdir -p /usr/share/github-runner \
-    && skopeo copy --retry-times 3 "docker://${RUNNER_IMAGE}:${RUNNER_IMAGE_TAG}" "oci:/usr/share/github-runner/runner-image:${RUNNER_IMAGE_TAG}"
+    && if [ "${EMBED_RUNNER_IMAGE}" = true ]; then \
+         skopeo copy --retry-times 3 "docker://${RUNNER_IMAGE}:${RUNNER_IMAGE_TAG}" "oci:/usr/share/github-runner/runner-image:${RUNNER_IMAGE_TAG}" \
+         && touch /usr/share/github-runner/offline; \
+       fi
 
 RUN { \
-      echo 'VARIANT="GitHub runner bootc OS"'; \
+      echo "VARIANT=\"GitHub runner bootc OS$([ "${EMBED_RUNNER_IMAGE}" = true ] && echo ' (offline)')\""; \
       echo 'VARIANT_ID=com.github.cthtrifork.github-runner-bootc'; \
     } >> /usr/lib/os-release
 

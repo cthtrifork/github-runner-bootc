@@ -2,8 +2,12 @@
 
 A [bootc](https://containers.github.io/bootc/) image (Fedora 45, x86_64) that turns a VM or a bare-metal host into
 ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh container from the
-[ARC runner image](https://github.com/cthtrifork/talos-gitops), which ships inside the OS image, so the host needs no
-registry to run (airgap friendly).
+[ARC runner image](https://github.com/cthtrifork/talos-gitops).
+
+| Image | Runner image | Use it when |
+|---|---|---|
+| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | the host can reach a registry or a mirror |
+| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image (about 3.5 GiB larger) | the host has no registry or network (airgap) |
 
 ```mermaid
 flowchart LR
@@ -16,8 +20,7 @@ flowchart LR
 ## Use it
 
 1. **Disk image:** run the *Create disk image* workflow (a raw image, zstd compressed, uploaded to Azure blob
-   storage), and write it to the disk with `dd`. On a host that already runs bootc, `bootc switch` to the image
-   `ghcr.io/cthtrifork/github-runner-bootc`. The runner image is embedded in the OS image, so every installer carries it (an ISO is planned, see #20).
+   storage), and write it to the disk with `dd`. On a host that already runs bootc, `bootc switch` to one of the images above. An ISO is planned (see #20).
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
    ```

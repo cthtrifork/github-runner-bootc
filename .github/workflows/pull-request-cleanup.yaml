@@ -37,7 +37,7 @@ jobs:
         uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
           token: ${{ github.token }}
-          packages: github-runner-bootc
+          packages: github-runner-bootc,offline-github-runner-bootc
           use-regex: true
           keep-n-tagged: 0
           exclude-tags: ^(latest|main|main-.*|pr-(?!${{ github.event.pull_request.number }}(-|$)).*)$

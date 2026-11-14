@@ -15,6 +15,11 @@ on:
         required: true
         default: latest
         type: string
+      variant:
+        description: "Which image: default pulls the runner image on the first boot, offline embeds it"
+        type: choice
+        options: [default, offline]
+        default: offline
       authorized_keys:
         description: "Public SSH key(s) for root, one per line (public keys only, never a private key)"
         required: true
@@ -46,7 +51,7 @@ jobs:
       contents: read
       packages: read # pull the image
     env:
-      IMAGE_FULL: ghcr.io/${{ github.repository }}
+      IMAGE_FULL: ${{ inputs.variant == 'default' && format('ghcr.io/{0}', github.repository) || format('ghcr.io/{0}/offline-{1}', github.repository_owner, github.event.repository.name) }}
       TAG: ${{ inputs.tag || format('pr-{0}', github.event.pull_request.number) }}
       DISK_SIZE: ${{ inputs.disk_size || '80G' }}
       AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}

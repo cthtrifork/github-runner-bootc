@@ -1,6 +1,6 @@
 name: Clean up old images
 
-# Prunes the ghcr.io package of the OS image (the embedded runner image is pulled from another repository's package at build time).
+# Prunes the ghcr.io packages of the two OS images (the runner image is pulled from another repository's package).
 # The workflow token owns the package: the image is pushed by this repository's own workflows.
 on:
   schedule:
@@ -22,7 +22,7 @@ concurrency:
 permissions: {}
 
 env:
-  PACKAGE: github-runner-bootc
+  PACKAGE: github-runner-bootc,offline-github-runner-bootc
   # a manual run is a dry run unless it says otherwise; so is a PR
   DRY_RUN: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
 

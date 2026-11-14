@@ -33,7 +33,6 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
   # The tag the build pushes for this ref: pr-<n> on a PR, the branch name otherwise.
   TAG: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
   # The test tier to run: the label on a PR (e2e-live implies e2e) or the dispatch input.
@@ -44,11 +43,25 @@ env:
 
 jobs:
   build:
-    name: Build image
+    name: Build ${{ matrix.variant }} image
     # `labeled` is only a trigger for the labels the build reads (see the header).
     if: ${{ github.event.action != 'labeled' || contains(fromJSON('["e2e","e2e-live","push"]'), github.event.label.name) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # pulls the runner image on the first boot
+          - variant: default
+            image: ghcr.io/${{ github.repository }}
+            embed: "false"
+          # embeds the runner image: no registry or network needed
+          - variant: offline
+            image: ghcr.io/${{ github.repository_owner }}/offline-${{ github.event.repository.name }}
+            embed: "true"
+    env:
+      IMAGE: ${{ matrix.image }}
     permissions:
       contents: read
       packages: write # push the image to ghcr.io
@@ -95,8 +108,9 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           provenance: false # a plain image manifest, not an index with an attestation
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          build-args: EMBED_RUNNER_IMAGE=${{ matrix.embed }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 
       # Vulnerabilities with a fix available; report only (the weekly rebuild picks fixes up), so a new CVE in a base
       # package does not turn every PR red.
@@ -122,23 +136,34 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
-  # Boot the image in QEMU on a hosted runner and run tests/system-test.sh inside it.
-  #   1. The network is restricted (only the SSH forward works), so everything has to work with no registry or internet:
-  #      this is the airgap test.
-  #   2. e2e-live: boot again with a network, seed a test GitHub App, let the VM register one ephemeral runner with the
-  #      label e2e-<run id>, and the `live-job` below runs on it.
+  # Boot each image in QEMU on a hosted runner and run tests/system-test.sh inside it.
+  #   - offline: the network is restricted (only the SSH forward works), so everything has to work with no registry or
+  #     internet: this is the airgap test. The default image gets a network, its first boot pulls the runner image.
+  #   - e2e-live (offline image only): boot again with a network, seed the GitHub App, let the VM register one ephemeral
+  #     runner with the label e2e-<run id>, and the `live-job` below runs on it.
   e2e:
-    name: E2E (${{ needs.build.outputs.tier }})
+    name: E2E ${{ matrix.variant }} (${{ needs.build.outputs.tier }})
     needs: build
     if: ${{ needs.build.outputs.tier != 'none' && needs.build.outputs.pushed == 'true' && github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: default
+            image: ghcr.io/${{ github.repository }}
+            restricted: false
+          - variant: offline
+            image: ghcr.io/${{ github.repository_owner }}/offline-${{ github.event.repository.name }}
+            restricted: true
     permissions:
       contents: read
       packages: read # pull the image that the build job pushed
       actions: write # cancel the run when the VM fails, so the live job does not wait for a runner that never comes
     env:
-      LIVE: ${{ needs.build.outputs.tier == 'e2e-live' }}
+      IMAGE: ${{ matrix.image }}
+      LIVE: ${{ needs.build.outputs.tier == 'e2e-live' && matrix.restricted }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -155,22 +180,23 @@ jobs:
           authorized_keys_file: out/authorized_keys
           token: ${{ github.token }}
 
-      - name: Boot with a restricted network (airgap test)
+      - name: Boot (restricted network for the offline image, the airgap test)
         uses: ./.github/actions/boot-vm
         with:
           disk: ${{ steps.disk.outputs.path }}
           ssh_key: out/ci_ssh_key
-          network: restricted
+          network: ${{ matrix.restricted && 'restricted' || 'open' }}
 
-      - name: System tests, offline
+      - name: System tests
         run: tests/vm-ssh.sh bash -s < tests/system-test.sh
 
       - name: Save the journal and stop the VM
         if: ${{ always() }}
-        run: tests/vm-stop.sh offline
+        run: tests/vm-stop.sh first
 
       - name: The offline journal has no registry lookups
-        run: "! grep -iE 'pinging container registry|unable to pull|Trying to pull' out/journal/offline.log"
+        if: ${{ matrix.restricted }}
+        run: "! grep -iE 'pinging container registry|unable to pull|Trying to pull' out/journal/first.log"
 
       # ---- live tier ----
       - name: Boot with a network (live tier)
