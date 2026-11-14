@@ -1,0 +1,48 @@
+flowchart LR
+    subgraph BUILD["Build and test (GitHub Actions, hosted runners)"]
+        direction TB
+        SRC["This repo<br/>Containerfile, Quadlet,<br/>scripts, workflows"]
+        CI["build.yaml<br/>build and push"]
+        E2E["Opt-in labels<br/>e2e: QEMU, no network<br/>e2e-live: real job"]
+        DISK["create-disk-image.yaml<br/>raw disk with bound image"]
+        SRC --> CI --> E2E
+        CI --> DISK
+    end
+
+    subgraph REG["Registries"]
+        direction TB
+        OS["ghcr.io<br/>github-runner-bootc<br/>(the OS image)"]
+        RUN["ghcr.io<br/>talos-gitops/github-actions-runner<br/>(the ARC runner image)"]
+        MIRROR["Internal mirror<br/>airgapped sites"]
+    end
+
+    DEST["Azure blob storage<br/>(raw disk, zstd)"]
+
+    subgraph HOST["Host: VM or bare metal (bootc, x86_64)"]
+        direction TB
+        BOOTC["bootc OS<br/>nightly update, drains first"]
+        BOUND[("Bound image store<br/>/usr/lib/bootc/storage<br/>runner image, no pull")]
+        subgraph UNITS["systemd: github-runner@N"]
+            direction TB
+            MINT["mint-jitconfig<br/>single-use JIT config"]
+            CTR["Quadlet container<br/>runner, one job,<br/>then a fresh one"]
+            MINT --> CTR
+        end
+        SEED["App credentials<br/>/etc/github-runner<br/>root only, seeded on the host"]
+        BOUND --> CTR
+        SEED --> MINT
+    end
+
+    GH["GitHub<br/>repos or org<br/>jobs, runner API"]
+    APP["GitHub App<br/>Administration: read and write"]
+
+    CI -- "push" --> OS
+    DISK --> DEST
+    DEST -- "dd / bootc install" --> HOST
+    OS -- "bootc install, switch, upgrade" --> BOOTC
+    RUN -- "pulled at install and upgrade" --> BOUND
+    MIRROR -.-> BOOTC
+    MIRROR -.-> BOUND
+    APP -. "key seeded once" .-> SEED
+    MINT -- "installation token,<br/>generate-jitconfig" --> GH
+    CTR <-- "long poll, job, logs" --> GH

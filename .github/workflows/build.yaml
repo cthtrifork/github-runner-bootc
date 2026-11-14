@@ -1,0 +1,216 @@
+name: Build and test bootc image
+
+# Builds the image on every relevant change and publishes it from main. Two opt-in test tiers run on a PR when a
+# maintainer adds the label (or on a manual run with `tier`):
+#   e2e       boot the image in QEMU with the network restricted and check the bound runner image works offline
+#   e2e-live  everything in e2e, then boot with a network and run a real job on the runner the VM registers
+# `labeled` only triggers for the labels the build reads; other labels (Renovate adds several) are ignored.
+on:
+  schedule:
+    - cron: "17 3 * * 0" # Sunday: pick up the weekly Fedora and runner updates
+  workflow_dispatch:
+    inputs:
+      tier:
+        description: "Test tier to run after the build"
+        type: choice
+        options: [none, e2e, e2e-live]
+        default: none
+  pull_request:
+    types: [opened, synchronize, reopened, ready_for_review, labeled]
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+  push:
+    branches: [main]
+    paths-ignore:
+      - "**/*.md"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+
+env:
+  IMAGE: ghcr.io/${{ github.repository }}
+  # The tag the build pushes for this ref: pr-<n> on a PR, the branch name otherwise.
+  TAG: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
+  # The test tier to run: the label on a PR (e2e-live implies e2e) or the dispatch input.
+  TIER: ${{ (github.event_name == 'workflow_dispatch' && inputs.tier) || (contains(github.event.pull_request.labels.*.name, 'e2e-live') && 'e2e-live') || (contains(github.event.pull_request.labels.*.name, 'e2e') && 'e2e') || 'none' }}
+  # Publish from main, schedule and manual runs; from a PR only when a test tier or the `push` label asks for it (the
+  # e2e job pulls the image from the registry), and never from a fork (its token cannot write packages).
+  PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.fork != true && (contains(github.event.pull_request.labels.*.name, 'push') || contains(github.event.pull_request.labels.*.name, 'e2e') || contains(github.event.pull_request.labels.*.name, 'e2e-live'))) }}
+
+jobs:
+  build:
+    name: Build image
+    # `labeled` is only a trigger for the labels the build reads (see the header).
+    if: ${{ github.event.action != 'labeled' || contains(fromJSON('["e2e","e2e-live","push"]'), github.event.label.name) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    permissions:
+      contents: read
+      packages: write # push the image to ghcr.io
+    outputs:
+      tag: ${{ env.TAG }}
+      tier: ${{ env.TIER }}
+      pushed: ${{ env.PUSH }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
+        if: ${{ env.PUSH == 'true' }}
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=raw,value=${{ env.TAG }}
+            type=raw,value=main-{{date 'YYYYMMDD'}}-${{ github.run_number }},enable={{is_default_branch}}
+            type=raw,value=latest,enable={{is_default_branch}}
+          labels: |
+            containers.bootc=1
+            org.opencontainers.image.licenses=Apache-2.0
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          file: github-runner.containerfile
+          push: ${{ env.PUSH == 'true' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          provenance: false # a plain image manifest, not an index with an attestation
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  # Boot the image in QEMU on a hosted runner and run tests/system-test.sh inside it.
+  #   1. The network is restricted (only the SSH forward works), so everything has to work with no registry or internet:
+  #      this is the airgap test.
+  #   2. e2e-live: boot again with a network, seed a test GitHub App, let the VM register one ephemeral runner with the
+  #      label e2e-<run id>, and the `live-job` below runs on it.
+  e2e:
+    name: E2E (${{ needs.build.outputs.tier }})
+    needs: build
+    if: ${{ needs.build.outputs.tier != 'none' && needs.build.outputs.pushed == 'true' && github.event.pull_request.draft != true }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    permissions:
+      contents: read
+      packages: read # pull the image that the build job pushed
+      actions: write # cancel the run when the VM fails, so the live job does not wait for a runner that never comes
+    env:
+      LIVE: ${{ needs.build.outputs.tier == 'e2e-live' }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Ephemeral SSH key
+        run: mkdir -p out && ssh-keygen -q -t ed25519 -N "" -f out/ci_ssh_key && cp out/ci_ssh_key.pub out/authorized_keys
+
+      - name: Install to a raw disk
+        id: disk
+        uses: ./.github/actions/install-disk
+        with:
+          image: ${{ env.IMAGE }}:${{ env.TAG }}
+          authorized_keys_file: out/authorized_keys
+          token: ${{ github.token }}
+
+      - name: Boot with a restricted network (airgap test)
+        uses: ./.github/actions/boot-vm
+        with:
+          disk: ${{ steps.disk.outputs.path }}
+          ssh_key: out/ci_ssh_key
+          network: restricted
+
+      - name: System tests, offline
+        run: tests/vm-ssh.sh bash -s < tests/system-test.sh
+
+      - name: Save the journal and stop the VM
+        if: ${{ always() }}
+        run: tests/vm-stop.sh offline
+
+      - name: The offline journal has no registry lookups
+        run: "! grep -iE 'pinging container registry|unable to pull|Trying to pull' out/journal/offline.log"
+
+      # ---- live tier ----
+      - name: Boot with a network (live tier)
+        if: ${{ env.LIVE == 'true' }}
+        uses: ./.github/actions/boot-vm
+        with:
+          disk: ${{ steps.disk.outputs.path }}
+          ssh_key: out/ci_ssh_key
+          network: open
+          memory: 8G
+
+      - name: GitHub App token (to remove the test runner afterwards)
+        id: app-token
+        if: ${{ env.LIVE == 'true' }}
+        uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
+        with:
+          client-id: ${{ vars.E2E_APP_CLIENT_ID }}
+          private-key: ${{ secrets.E2E_APP_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: ${{ github.event.repository.name }}
+          permission-administration: write
+
+      - name: Seed the test App and start the runner
+        if: ${{ env.LIVE == 'true' }}
+        run: tests/live-test.sh seed
+        env:
+          RUN_ID: ${{ github.run_id }}
+          E2E_APP_ID: ${{ vars.E2E_APP_ID }}
+          E2E_INSTALLATION_ID: ${{ vars.E2E_INSTALLATION_ID }}
+          E2E_APP_PRIVATE_KEY: ${{ secrets.E2E_APP_PRIVATE_KEY }}
+
+      - name: Wait until the live job has run on the VM
+        if: ${{ env.LIVE == 'true' }}
+        run: tests/live-test.sh wait
+        env:
+          RUN_ID: ${{ github.run_id }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Remove the test runner and stop the VM
+        if: ${{ always() && env.LIVE == 'true' }}
+        run: tests/live-test.sh cleanup; tests/vm-stop.sh live
+        env:
+          RUN_ID: ${{ github.run_id }}
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+
+      - name: Journals in the summary
+        if: ${{ always() }}
+        run: for f in out/journal/*.log; do printf '<details><summary>%s</summary>\n\n```\n' "$f"; tail -n 200 "$f"; printf '```\n</details>\n'; done >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Cancel the run when the VM test failed
+        if: ${{ failure() && env.LIVE == 'true' }}
+        run: gh run cancel "$GITHUB_RUN_ID" || true
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+  # Runs on the runner the VM above registers: the unique label means no other workflow can land on it.
+  live-job:
+    name: live job
+    needs: build
+    if: ${{ needs.build.outputs.tier == 'e2e-live' && needs.build.outputs.pushed == 'true' && github.event.pull_request.head.repo.fork != true && github.event.pull_request.draft != true }}
+    runs-on: [self-hosted, "e2e-${{ github.run_id }}"]
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Where am I running
+        run: id && uname -a && podman info --format '{{.Host.OCIRuntime.Name}} {{.Store.GraphDriverName}}'
+
+      - name: Podman works inside the runner
+        run: printf 'FROM scratch\nCOPY hello /hello\n' > Containerfile && echo hello > hello && buildah bud -t localhost/live-test:1 . && podman images localhost/live-test

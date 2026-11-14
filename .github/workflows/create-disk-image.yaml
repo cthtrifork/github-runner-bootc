@@ -1,0 +1,110 @@
+name: Create disk image
+
+# Builds a bootable raw disk image of a published bootc image for bare metal (write it to a disk with dd or
+# `bootc install`), including the logically bound runner image, so the host can run without any registry.
+# An Anaconda ISO is deliberately not offered: bootc does not support logically bound images with Anaconda, so an ISO
+# would boot without the runner image.
+#
+# The compressed image is uploaded to Azure blob storage (secret AZURE_STORAGE_CONNECTION_STRING, variable
+# AZURE_STORAGE_CONTAINER): it is about 3.7 GiB, more than the 2 GiB a GitHub release asset can hold.
+# The `disk` label on a PR runs everything except the upload, with a throwaway key, and reports the sizes: use it to test
+# changes to this workflow.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to install (latest, main-<date>-<n>, pr-<n>)"
+        required: true
+        default: latest
+        type: string
+      authorized_keys:
+        description: "Public SSH key(s) for root, one per line (public keys only, never a private key)"
+        required: true
+        type: string
+      disk_size:
+        description: "Size of the raw disk"
+        required: false
+        default: 80G
+        type: string
+  pull_request:
+    types: [labeled]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: create-disk-image-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  disk:
+    name: Raw disk image
+    # Other labels (Renovate adds several) and forks start nothing.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.label.name == 'disk' && github.event.pull_request.head.repo.fork != true) }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: read # pull the image
+    env:
+      IMAGE_FULL: ghcr.io/${{ github.repository }}
+      TAG: ${{ inputs.tag || format('pr-{0}', github.event.pull_request.number) }}
+      DISK_SIZE: ${{ inputs.disk_size || '80G' }}
+      AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # a throwaway key on a PR (the disk is only measured), the given public keys otherwise
+      - name: Authorized keys
+        env:
+          AUTHORIZED_KEYS: ${{ inputs.authorized_keys }}
+        run: | #sh
+          set -euo pipefail
+          [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ && "$DISK_SIZE" =~ ^[0-9]+G$ ]] || { echo "::error::bad tag or disk_size"; exit 1; }
+          if [ -n "$AUTHORIZED_KEYS" ]; then
+            printf '%s\n' "$AUTHORIZED_KEYS" > authorized_keys
+            # public keys only: ssh-keygen -l fails on a private key or on garbage
+            ssh-keygen -l -f authorized_keys >/dev/null
+            ! grep -q 'PRIVATE KEY' authorized_keys
+          else
+            ssh-keygen -q -t ed25519 -N "" -f "$RUNNER_TEMP/throwaway" && cp "$RUNNER_TEMP/throwaway.pub" authorized_keys
+          fi
+
+      - name: Install to a raw disk
+        uses: ./.github/actions/install-disk
+        with:
+          image: ${{ env.IMAGE_FULL }}:${{ env.TAG }}
+          authorized_keys_file: authorized_keys
+          disk_size: ${{ env.DISK_SIZE }}
+          token: ${{ github.token }}
+
+      - name: Compress
+        id: size
+        run: | #sh
+          set -euo pipefail
+          cd out
+          raw="$(stat -c %s disk.raw)"
+          zstd -T0 -3 --sparse -q -o disk.raw.zst disk.raw
+          rm -f disk.raw
+          bytes="$(stat -c %s disk.raw.zst)"
+          echo "bytes=$bytes" >> "$GITHUB_OUTPUT"
+          echo "### Disk image size
+          | | size |
+          |---|---|
+          | raw (sparse, apparent) | $((raw / 1048576)) MiB |
+          | compressed (zstd -3) | $((bytes / 1048576)) MiB |
+          " >> "$GITHUB_STEP_SUMMARY"
+
+      # az is preinstalled on the hosted runner; it uploads large files in blocks
+      - name: Upload to Azure blob storage
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: | #sh
+          set -euo pipefail
+          name="github-runner-${TAG}-$(date -u +%Y%m%d).raw.zst"
+          az storage blob upload --container-name "$AZURE_STORAGE_CONTAINER" --file out/disk.raw.zst --name "$name" --overwrite true
+          echo "Uploaded blob \`$name\` to container \`$AZURE_STORAGE_CONTAINER\`" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          AZURE_STORAGE_CONTAINER: ${{ vars.AZURE_STORAGE_CONTAINER }}

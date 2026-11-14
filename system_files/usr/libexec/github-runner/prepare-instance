@@ -1,0 +1,22 @@
+#!/usr/bin/bash
+# ExecStartPre of github-runner@<instance>: clean per-instance state and make the directories the runner (UID 1001) uses.
+set -euo pipefail
+
+inst="${1:?Usage: $0 <instance>}"
+[[ "$inst" =~ ^[0-9]+$ ]] || { echo "instance must be a number" >&2; exit 1; }
+base="/var/lib/github-runner/$inst"
+
+# Job workspace and scratch are wiped for every job. Image storage, rootless storage and caches survive between jobs.
+rm -rf "${base:?}/work" "${base:?}/var-tmp"
+install -d -m 0755 -o 1001 -g 1001 "$base/work" "$base/rootless" "$base/cache" "$base/dnf"
+install -d -m 1777 "$base/var-tmp"
+install -d -m 0755 "$base/containers"
+
+# Low disk guard: a full /var fails jobs in confusing ways, so stop early with a clear message (the old homeserver lesson).
+min_free_gb="$(sed -n 's/^MIN_FREE_GB=//p' /etc/github-runner/config 2>/dev/null | tail -n1 || true)"
+min_free_gb="${min_free_gb:-10}"
+free_gb="$(df --output=avail -BG /var/lib/github-runner | tail -n1 | tr -dc '0-9')"
+if (( free_gb < min_free_gb )); then
+    echo "Only ${free_gb}G free on /var/lib/github-runner (minimum ${min_free_gb}G); run github-runner-prune.service" >&2
+    exit 1
+fi

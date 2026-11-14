@@ -1,0 +1,60 @@
+name: Install the image to a raw disk
+description: >-
+  Installs a bootc image into a sparse raw disk with `bootc install to-disk --via-loopback`. The runner image the OS
+  image binds (github-runner.image) is pulled into root containers-storage first, so bootc copies it onto the disk.
+inputs:
+  image:
+    description: Image to install, with tag
+    required: true
+  authorized_keys_file:
+    description: File with the public key(s) to authorize for root SSH access
+    required: true
+  disk_size:
+    description: Size of the sparse raw disk
+    default: 60G
+  token:
+    description: Token that can pull the image from ghcr.io
+    required: true
+outputs:
+  path:
+    description: Path of the raw disk
+    value: ${{ steps.install.outputs.path }}
+runs:
+  using: composite
+  steps:
+    - name: More disk for container storage
+      uses: ublue-os/container-storage-action@dc1f4c8f17b672069e921f001132f7cf98a423a6 # main (the action has no tags) # zizmor: ignore[stale-action-refs]
+      with:
+        target-dir: /var/lib/containers
+
+    - name: Pull the image and the runner image it binds
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        TOKEN: ${{ inputs.token }}
+      run: | #sh
+        set -euo pipefail
+        printf '%s' "$TOKEN" | sudo podman login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+        sudo podman pull -q "$IMAGE"
+        # the bound image comes from the image being installed, not from this checkout
+        sudo podman pull -q "$(sudo podman run --rm "$IMAGE" sed -n 's/^Image=//p' /usr/share/containers/systemd/github-runner.image)"
+
+    - name: Install to a raw disk
+      id: install
+      shell: bash
+      env:
+        IMAGE: ${{ inputs.image }}
+        DISK_SIZE: ${{ inputs.disk_size }}
+        AUTHORIZED_KEYS: ${{ inputs.authorized_keys_file }}
+      run: | #sh
+        set -euo pipefail
+        mkdir -p out
+        truncate -s "$DISK_SIZE" out/disk.raw
+        sudo podman run --rm --privileged --pid=host --security-opt label=type:unconfined_t \
+          -v /dev:/dev -v /run/udev:/run/udev:ro \
+          -v /var/lib/containers:/var/lib/containers \
+          -v "$PWD/out:/output" -v "$(realpath "$AUTHORIZED_KEYS"):/authorized_keys:ro" \
+          "$IMAGE" \
+          bootc install to-disk --via-loopback --generic-image --filesystem xfs \
+            --root-ssh-authorized-keys /authorized_keys /output/disk.raw
+        echo "path=$PWD/out/disk.raw" >> "$GITHUB_OUTPUT"

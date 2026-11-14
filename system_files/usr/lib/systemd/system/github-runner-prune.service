@@ -1,0 +1,6 @@
+[Unit]
+Description=Prune old runner storage
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/github-runner/prune

@@ -58,6 +58,14 @@
       automerge: true,
     },
     {
+      // The bound runner image (github-runner.image and github-runner@.container): bootc copies it from containers-storage,
+      // which fails for a digest-pinned reference of a multi-arch image, so it is pinned by its exact version tag only.
+      matchPackageNames: ['ghcr.io/cthtrifork/talos-gitops/github-actions-runner'],
+      pinDigests: false,
+      // Both files carry the same reference and Renovate must bump them together in one PR.
+      groupName: 'runner image',
+    },
+    {
       // The Fedora base image: every update (new release, digest pin, digest bump) is only created
       // once ticked on the Dependency Dashboard, so a rebuild of the whole image is a decision.
       matchPackageNames: ['quay.io/fedora/fedora-bootc'],
