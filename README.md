@@ -59,4 +59,4 @@ never point its own PR workflows at it.
 
 ## Contributing
 
-See [docs/architecture.md](docs/architecture.md). PR titles follow [Conventional Commits](https://www.conventionalcommits.org/).
+See [docs/architecture.md](docs/architecture.md) and [docs/testing.md](docs/testing.md). PR titles follow [Conventional Commits](https://www.conventionalcommits.org/).
