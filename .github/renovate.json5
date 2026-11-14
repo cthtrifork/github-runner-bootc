@@ -100,6 +100,17 @@
       datasourceTemplate: 'docker',
     },
     {
+      // the runner image in the Quadlet unit: Renovate bumps it together with the containerfile (packageRules, 'runner image')
+      customType: 'regex',
+      managerFilePatterns: [
+        '/^system_files/.+/github-runner@\\.container$/',
+      ],
+      matchStrings: [
+        '^Image=(?<depName>[^:\\s]+):(?<currentValue>v?\\d[\\w.-]*)\\s*$',
+      ],
+      datasourceTemplate: 'docker',
+    },
+    {
       // versions marked with a `# renovate: datasource=<ds> depName=<name>` comment
       customType: 'regex',
       managerFilePatterns: [
