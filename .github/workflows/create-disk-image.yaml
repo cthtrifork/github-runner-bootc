@@ -1,12 +1,7 @@
 name: Create disk image
 
-# Builds a bootable raw disk image of a published bootc image for bare metal (write it to a disk with dd or
-# `bootc install`). The runner image is embedded in the OS image, so the host runs without any registry.
-#
-# The compressed image is uploaded to Azure blob storage (secret AZURE_STORAGE_CONNECTION_STRING, variable
-# AZURE_STORAGE_CONTAINER): it is about 3.7 GiB, more than the 2 GiB a GitHub release asset can hold.
-# The `disk` label on a PR runs everything except the upload, with a throwaway key, and reports the sizes: use it to test
-# changes to this workflow.
+# Builds a bootable raw disk image of a published image and uploads it, zstd compressed, to Azure blob storage (secret
+# AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER). The `disk` PR label builds without uploading.
 on:
   workflow_dispatch:
     inputs:
@@ -43,7 +38,7 @@ concurrency:
 jobs:
   disk:
     name: Raw disk image
-    # Other labels (Renovate adds several) and forks start nothing.
+    # other labels and forks start nothing
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.label.name == 'disk' && github.event.pull_request.head.repo.fork != true) }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -60,7 +55,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # a throwaway key on a PR (the disk is only measured), the given public keys otherwise
       - name: Authorized keys
         env:
           AUTHORIZED_KEYS: ${{ inputs.authorized_keys }}
@@ -69,7 +63,6 @@ jobs:
           [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ && "$DISK_SIZE" =~ ^[0-9]+G$ ]] || { echo "::error::bad tag or disk_size"; exit 1; }
           if [ -n "$AUTHORIZED_KEYS" ]; then
             printf '%s\n' "$AUTHORIZED_KEYS" > authorized_keys
-            # public keys only: ssh-keygen -l fails on a private key or on garbage
             ssh-keygen -l -f authorized_keys >/dev/null
             ! grep -q 'PRIVATE KEY' authorized_keys
           else
@@ -101,7 +94,6 @@ jobs:
           | compressed (zstd -3) | $((bytes / 1048576)) MiB |
           " >> "$GITHUB_STEP_SUMMARY"
 
-      # az is preinstalled on the hosted runner; it uploads large files in blocks
       - name: Upload to Azure blob storage
         if: ${{ github.event_name == 'workflow_dispatch' }}
         run: | #sh

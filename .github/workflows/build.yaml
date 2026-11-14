@@ -1,13 +1,10 @@
 name: Build and test bootc image
 
-# Builds the image on every relevant change and publishes it from main. Two opt-in test tiers run on a PR when a
-# maintainer adds the label (or on a manual run with `tier`):
-#   e2e       boot the image in QEMU with the network restricted and check the embedded runner image works offline
-#   e2e-live  everything in e2e, then boot with a network and run a real job on the runner the VM registers
-# `labeled` only triggers for the labels the build reads; other labels (Renovate adds several) are ignored.
+# Builds both images and publishes them from main. The PR labels `e2e` (boot in QEMU, the offline image with no network)
+# and `e2e-live` (also run a real job on the VM's runner) opt in to the tests; `push` publishes the PR image.
 on:
   schedule:
-    - cron: "17 3 * * 0" # Sunday: pick up the weekly Fedora and runner updates
+    - cron: "17 3 * * 0"
   workflow_dispatch:
     inputs:
       tier:
@@ -33,18 +30,15 @@ concurrency:
   cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
 
 env:
-  # The tag the build pushes for this ref: pr-<n> on a PR, the branch name otherwise.
   TAG: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
-  # The test tier to run: the label on a PR (e2e-live implies e2e) or the dispatch input.
   TIER: ${{ (github.event_name == 'workflow_dispatch' && inputs.tier) || (contains(github.event.pull_request.labels.*.name, 'e2e-live') && 'e2e-live') || (contains(github.event.pull_request.labels.*.name, 'e2e') && 'e2e') || 'none' }}
-  # Publish from main, schedule and manual runs; from a PR only when a test tier or the `push` label asks for it (the
-  # e2e job pulls the image from the registry), and never from a fork (its token cannot write packages).
+  # a PR image is pushed only when a label asks for it, never from a fork
   PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.fork != true && (contains(github.event.pull_request.labels.*.name, 'push') || contains(github.event.pull_request.labels.*.name, 'e2e') || contains(github.event.pull_request.labels.*.name, 'e2e-live'))) }}
 
 jobs:
   build:
     name: Build ${{ matrix.variant }} image
-    # `labeled` is only a trigger for the labels the build reads (see the header).
+    # other labels (Renovate adds several) start nothing
     if: ${{ github.event.action != 'labeled' || contains(fromJSON('["e2e","e2e-live","push"]'), github.event.label.name) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -52,11 +46,9 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # pulls the runner image on the first boot
           - variant: default
             image: ghcr.io/${{ github.repository }}
             embed: "false"
-          # embeds the runner image: no registry or network needed
           - variant: offline
             image: ghcr.io/${{ github.repository_owner }}/offline-${{ github.event.repository.name }}
             embed: "true"
@@ -65,8 +57,8 @@ jobs:
     permissions:
       contents: read
       packages: write # push the image to ghcr.io
-      id-token: write # sign the provenance attestation (OIDC)
-      attestations: write # store the provenance attestation
+      id-token: write # provenance attestation
+      attestations: write # provenance attestation
     outputs:
       tag: ${{ env.TAG }}
       tier: ${{ env.TIER }}
@@ -107,13 +99,12 @@ jobs:
           push: ${{ env.PUSH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          provenance: false # a plain image manifest, not an index with an attestation
+          provenance: false
           build-args: EMBED_RUNNER_IMAGE=${{ matrix.embed }}
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 
-      # Vulnerabilities with a fix available; report only (the weekly rebuild picks fixes up), so a new CVE in a base
-      # package does not turn every PR red.
+      # report only: the weekly rebuild picks fixes up
       - name: Trivy scan
         if: ${{ env.PUSH == 'true' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -136,11 +127,8 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
-  # Boot each image in QEMU on a hosted runner and run tests/system-test.sh inside it.
-  #   - offline: the network is restricted (only the SSH forward works), so everything has to work with no registry or
-  #     internet: this is the airgap test. The default image gets a network, its first boot pulls the runner image.
-  #   - e2e-live (offline image only): boot again with a network, seed the GitHub App, let the VM register one ephemeral
-  #     runner with the label e2e-<run id>, and the `live-job` below runs on it.
+  # The offline image boots with only the SSH forward reachable (the airgap test); e2e-live then boots it again with a
+  # network, seeds the GitHub App and lets the VM register a runner for the `live job`.
   e2e:
     name: E2E ${{ matrix.variant }} (${{ needs.build.outputs.tier }})
     needs: build
@@ -160,7 +148,7 @@ jobs:
     permissions:
       contents: read
       packages: read # pull the image that the build job pushed
-      actions: write # cancel the run when the VM fails, so the live job does not wait for a runner that never comes
+      actions: write # cancel the run when the VM fails, so the live job does not wait for a runner
     env:
       IMAGE: ${{ matrix.image }}
       LIVE: ${{ needs.build.outputs.tier == 'e2e-live' && matrix.restricted }}
@@ -198,7 +186,6 @@ jobs:
         if: ${{ matrix.restricted }}
         run: "! grep -iE 'pinging container registry|unable to pull|Trying to pull' out/journal/first.log"
 
-      # ---- live tier ----
       - name: Boot with a network (live tier)
         if: ${{ env.LIVE == 'true' }}
         uses: ./.github/actions/boot-vm
@@ -252,7 +239,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-  # Runs on the runner the VM above registers: the unique label means no other workflow can land on it.
+  # runs on the runner the VM registers; the unique label keeps other workflows off it
   live-job:
     name: live job
     needs: build

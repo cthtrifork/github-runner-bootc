@@ -1,7 +1,5 @@
 #!/usr/bin/bash
-# Make the runner image available in the container storage: the first boot after an install, or after an OS update that
-# changed the runner version. The offline variant has it embedded in the OS image (/usr/share/github-runner/runner-image)
-# and needs no registry; the other variant pulls it (a registry or a mirror in registries.conf.d must be reachable).
+# Put the runner image in the container storage: from the OS image (offline variant) or by pulling it.
 set -euo pipefail
 
 ref="$(sed -n 's/^Image=//p' '/usr/share/containers/systemd/github-runner@.container')"
@@ -18,5 +16,5 @@ else
     podman pull --retry 3 "$ref"
 fi
 
-# Drop runner images of earlier OS versions; the jobs' own images live in the containers' storage, not here.
+# drop runner images of earlier OS versions
 podman images --format '{{.Repository}}:{{.Tag}}' | { grep -F "${repo}:" || true; } | { grep -vxF "$ref" || true; } | xargs -r podman rmi
