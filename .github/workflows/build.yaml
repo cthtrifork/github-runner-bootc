@@ -46,7 +46,7 @@ jobs:
       contents: read
       packages: read # the revision label of the published images
     outputs:
-      build: ${{ (github.event_name == 'push' && (steps.gate.outputs.build == 'true' || steps.pushed.outputs.any_changed == 'true')) || (github.event_name != 'push' && steps.gate.outputs.build == 'true' && (github.event_name != 'pull_request' || steps.changes.outputs.image_any_changed == 'true' || steps.changes.outputs.ci_any_changed == 'true')) }}
+      build: ${{ (github.event_name == 'push' && (steps.gate.outputs.build == 'true' || steps.since_default.outputs.any_changed == 'true' || steps.since_offline.outputs.any_changed == 'true')) || (github.event_name != 'push' && steps.gate.outputs.build == 'true' && (github.event_name != 'pull_request' || steps.changes.outputs.image_any_changed == 'true' || steps.changes.outputs.ci_any_changed == 'true')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -78,13 +78,23 @@ jobs:
           ACTOR: ${{ github.actor }}
           TOKEN: ${{ github.token }}
 
-      # the image files that changed since the older published image was built, so a lost build is retried
-      - name: Changed files since the published image
-        id: pushed
-        if: ${{ github.event_name == 'push' && steps.gate.outputs.base != '' }}
+      # the image files that changed since each published image was built, so a lost build is retried
+      - name: Changed since the default image
+        id: since_default
+        if: ${{ github.event_name == 'push' && steps.gate.outputs.default_rev != '' }}
         uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
         with:
-          base_sha: ${{ steps.gate.outputs.base }}
+          base_sha: ${{ steps.gate.outputs.default_rev }}
+          files: |
+            github-runner.containerfile
+            system_files/**
+
+      - name: Changed since the offline image
+        id: since_offline
+        if: ${{ github.event_name == 'push' && steps.gate.outputs.offline_rev != '' }}
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
+        with:
+          base_sha: ${{ steps.gate.outputs.offline_rev }}
           files: |
             github-runner.containerfile
             system_files/**

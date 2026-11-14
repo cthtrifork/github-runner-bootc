@@ -1,32 +1,28 @@
 #!/usr/bin/env bash
 # Writes build=true|false to $GITHUB_OUTPUT.
-# - push: builds when no published image has a usable revision. Otherwise it outputs base, the commit the older published
-#   image was built from (its org.opencontainers.image.revision label), and the workflow builds only when the image files
-#   changed since, so a cancelled or failed build is retried by the next push instead of lost.
+# - push: outputs the commit each published image was built from (its org.opencontainers.image.revision label); the
+#   workflow builds when the image files changed since either, so a cancelled build is retried by the next push.
 # - schedule: rebuilds when the base image is newer than the published image or the published image is 14 days old.
 # - anything else (pull request, manual run): builds; the workflow narrows a pull request by the files it changed.
 set -euo pipefail
 
 if [[ "$EVENT_NAME" == push ]]; then
-    # the commit the older of the two published images was built from; the workflow diffs HEAD against it
-    base=""
-    for ref in "$IMAGE" "$OFFLINE_IMAGE"; do
-        rev="$(skopeo inspect --override-os linux --override-arch amd64 --creds "$ACTOR:$TOKEN" "docker://$ref:latest" \
-            --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)"
-        if [[ -z "$rev" ]] || ! git merge-base --is-ancestor "$rev" HEAD 2>/dev/null; then
-            echo "$ref has no usable revision ($rev): build"
-            echo "build=true" >>"$GITHUB_OUTPUT"
-            exit 0
-        fi
-        if [[ -z "$base" ]] || git merge-base --is-ancestor "$rev" "$base"; then
-            base="$rev"
-        fi
-    done
-    echo "The older published image was built from $base"
-    {
-        echo "build=false"
-        echo "base=$base"
-    } >>"$GITHUB_OUTPUT"
+    revision() { # <image ref>: the commit the published image was built from, empty if there is none
+        skopeo inspect --override-os linux --override-arch amd64 --creds "$ACTOR:$TOKEN" "docker://$1:latest" \
+            --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true
+    }
+    default_rev="$(revision "$IMAGE")"
+    offline_rev="$(revision "$OFFLINE_IMAGE")"
+    if [[ -z "$default_rev" || -z "$offline_rev" ]]; then
+        echo "A published image has no revision: build"
+        echo "build=true" >>"$GITHUB_OUTPUT"
+    else
+        {
+            echo "build=false"
+            echo "default_rev=$default_rev"
+            echo "offline_rev=$offline_rev"
+        } >>"$GITHUB_OUTPUT"
+    fi
     exit 0
 fi
 
