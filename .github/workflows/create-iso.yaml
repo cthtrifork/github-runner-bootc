@@ -65,7 +65,7 @@ jobs:
         id: bib
         uses: ublue-os/bootc-image-builder-action@b98784c42327746e107a6a753b64f44823bdbf2f # main (the action has no tags) # zizmor: ignore[stale-action-refs]
         with:
-          config-file: iso.toml
+          config-file: ./iso.toml
           type: iso
           rootfs: xfs
           image: ${{ env.IMAGE_FULL }}:${{ env.TAG }}
