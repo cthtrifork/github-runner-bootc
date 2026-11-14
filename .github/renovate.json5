@@ -7,13 +7,11 @@
     'dependencies',
     'automated-pr',
   ],
-  dependencyDashboard: {
-    enabled: true,
-    title: 'Dependency Dashboard',
-    labels: [
-      'dependencies',
-    ],
-  },
+  dependencyDashboard: true,
+  dependencyDashboardTitle: 'Dependency Dashboard',
+  dependencyDashboardLabels: [
+    'dependencies',
+  ],
   minimumReleaseAge: '2 days',
   minimumReleaseAgeBehaviour: 'timestamp-optional',
   internalChecksFilter: 'strict',
