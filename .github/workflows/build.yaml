@@ -60,6 +60,7 @@ jobs:
       id-token: write # provenance attestation
       attestations: write # provenance attestation
     outputs:
+      version: ${{ steps.meta.outputs.version }}
       tag: ${{ env.TAG }}
       tier: ${{ env.TIER }}
       pushed: ${{ env.PUSH }}
@@ -83,8 +84,8 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=${{ env.TAG }}
             type=raw,value=main-{{date 'YYYYMMDD'}}-${{ github.run_number }},enable={{is_default_branch}}
+            type=raw,value=${{ env.TAG }}
             type=raw,value=latest,enable={{is_default_branch}}
           labels: |
             containers.bootc=1
@@ -254,3 +255,22 @@ jobs:
 
       - name: Podman works inside the runner
         run: printf 'FROM scratch\nCOPY hello /hello\n' > Containerfile && echo hello > hello && buildah bud -t localhost/live-test:1 . && podman images localhost/live-test
+
+  # Every build of main (a merge, the weekly schedule, a manual run) publishes a release named like the image tag, with
+  # notes drafted from the merged pull request titles.
+  release:
+    name: Release
+    needs: build
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.pushed == 'true' }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      contents: write # create the release and its tag
+      pull-requests: read # the merged pull requests since the last release
+    steps:
+      - uses: release-drafter/release-drafter@d1a19e60e81a7e650d00a7de9277f87e439117ea # v7.11.0
+        with:
+          tag: ${{ needs.build.outputs.version }}
+          name: ${{ needs.build.outputs.version }}
+          commitish: ${{ github.sha }}
+          publish: true
