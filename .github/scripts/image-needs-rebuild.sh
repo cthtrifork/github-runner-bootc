@@ -1,7 +1,30 @@
 #!/usr/bin/env bash
-# Writes build=true|false to $GITHUB_OUTPUT. Only the scheduled run can say false: it rebuilds when the base image is
-# newer than the published image or the published image is 14 days old.
+# Writes build=true|false to $GITHUB_OUTPUT.
+# - push: builds when the image files changed since the commit each published image was built from (its
+#   org.opencontainers.image.revision label), so a cancelled or failed build is retried by the next push instead of lost.
+# - schedule: rebuilds when the base image is newer than the published image or the published image is 14 days old.
+# - anything else (pull request, manual run): builds; the workflow narrows a pull request by the files it changed.
 set -euo pipefail
+
+if [[ "$EVENT_NAME" == push ]]; then
+    for ref in "$IMAGE" "$OFFLINE_IMAGE"; do
+        rev="$(skopeo inspect --override-os linux --override-arch amd64 --creds "$ACTOR:$TOKEN" "docker://$ref:latest" \
+            --format '{{index .Labels "org.opencontainers.image.revision"}}' 2>/dev/null || true)"
+        if [[ -z "$rev" ]] || ! git merge-base --is-ancestor "$rev" HEAD 2>/dev/null; then
+            echo "$ref has no usable revision ($rev): build"
+            echo "build=true" >>"$GITHUB_OUTPUT"
+            exit 0
+        fi
+        if ! git diff --quiet "$rev" HEAD -- github-runner.containerfile system_files; then
+            echo "$ref was built from $rev and the image files changed since: build"
+            echo "build=true" >>"$GITHUB_OUTPUT"
+            exit 0
+        fi
+    done
+    echo "Both published images already contain the image files at HEAD: skip the build and the release"
+    echo "build=false" >>"$GITHUB_OUTPUT"
+    exit 0
+fi
 
 if [[ "$EVENT_NAME" != schedule ]]; then
     echo "build=true" >>"$GITHUB_OUTPUT"
