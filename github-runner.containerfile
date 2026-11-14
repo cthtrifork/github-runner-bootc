@@ -16,7 +16,7 @@ RUN cp /usr/share/dnf5/repos.d/fedora.repo /usr/share/dnf5/repos.d/fedora-update
 # Embedded as an OCI directory (a plain copy, no privileges needed) before anything that changes often, so updates reuse
 # its large layer. The tag must equal the Image= line of github-runner@.container (tests/check-image-refs.sh).
 ARG RUNNER_IMAGE=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
-ARG RUNNER_IMAGE_TAG=v0.11.0 # renovate: datasource=docker depName=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
+ARG RUNNER_IMAGE_TAG=v0.13.0 # renovate: datasource=docker depName=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
 ARG EMBED_RUNNER_IMAGE=false
 RUN mkdir -p /usr/share/github-runner \
     && if [ "${EMBED_RUNNER_IMAGE}" = true ]; then \
