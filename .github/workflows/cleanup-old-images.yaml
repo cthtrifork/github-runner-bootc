@@ -1,0 +1,75 @@
+name: Clean up old images
+
+# Prunes the ghcr.io package of the OS image (the logically bound runner image lives in another repository's package).
+# The workflow token owns the package: the image is pushed by this repository's own workflows.
+on:
+  schedule:
+    - cron: "05 7 * * *" # 7:05 UTC every day
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "Only list what would be deleted"
+        type: boolean
+        default: true
+  pull_request: # a dry run when this workflow changes
+    paths:
+      - ".github/workflows/cleanup-old-images.yaml"
+
+concurrency:
+  group: cleanup-old-images
+  cancel-in-progress: false
+
+permissions: {}
+
+env:
+  PACKAGE: github-runner-bootc
+  # a manual run is a dry run unless it says otherwise; so is a PR
+  DRY_RUN: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+
+jobs:
+  cleanup:
+    name: Cleanup images
+    runs-on: ubuntu-slim
+    timeout-minutes: 15
+    permissions:
+      packages: write # delete package versions
+    steps:
+      - name: Delete untagged images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          token: ${{ github.token }}
+          packages: ${{ env.PACKAGE }}
+          delete-untagged: true
+          dry-run: ${{ env.DRY_RUN == 'true' }}
+
+      # Not delete-tags: for images with several tags the action unlinks them one by one, which GHCR rejects (HTTP 400).
+      # keep-n-tagged: 0 deletes whole images; exclude-tags protects the main and latest images.
+      - name: Delete old PR and branch images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          token: ${{ github.token }}
+          packages: ${{ env.PACKAGE }}
+          keep-n-tagged: 0
+          exclude-tags: main,main-*,latest
+          older-than: 7 days
+          dry-run: ${{ env.DRY_RUN == 'true' }}
+
+      - name: Delete ghost images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          token: ${{ github.token }}
+          packages: ${{ env.PACKAGE }}
+          delete-ghost-images: true
+          exclude-tags: main,main-*,latest
+          dry-run: ${{ env.DRY_RUN == 'true' }}
+
+      # Everything younger than 30 days is kept, plus the 5 newest older ones. latest is never deleted.
+      - name: Prune old main images
+        uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
+        with:
+          token: ${{ github.token }}
+          packages: ${{ env.PACKAGE }}
+          keep-n-tagged: 5
+          exclude-tags: latest
+          older-than: 30 days
+          dry-run: ${{ env.DRY_RUN == 'true' }}
