@@ -58,8 +58,8 @@
       automerge: true,
     },
     {
-      // The bound runner image (github-runner.image and github-runner@.container): bootc copies it from containers-storage,
-      // which fails for a digest-pinned reference of a multi-arch image, so it is pinned by its exact version tag only.
+      // The runner image: RUNNER_IMAGE_TAG in github-runner.containerfile (embedded into the OS image) and Image= in
+      // github-runner@.container, pinned by its exact version tag (the local copy is loaded by tag).
       matchPackageNames: ['ghcr.io/cthtrifork/talos-gitops/github-actions-runner'],
       pinDigests: false,
       // Both files carry the same reference and Renovate must bump them together in one PR.

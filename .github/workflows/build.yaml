@@ -2,7 +2,7 @@ name: Build and test bootc image
 
 # Builds the image on every relevant change and publishes it from main. Two opt-in test tiers run on a PR when a
 # maintainer adds the label (or on a manual run with `tier`):
-#   e2e       boot the image in QEMU with the network restricted and check the bound runner image works offline
+#   e2e       boot the image in QEMU with the network restricted and check the embedded runner image works offline
 #   e2e-live  everything in e2e, then boot with a network and run a real job on the runner the VM registers
 # `labeled` only triggers for the labels the build reads; other labels (Renovate adds several) are ignored.
 on:

@@ -1,9 +1,7 @@
 name: Create disk image
 
 # Builds a bootable raw disk image of a published bootc image for bare metal (write it to a disk with dd or
-# `bootc install`), including the logically bound runner image, so the host can run without any registry.
-# An Anaconda ISO is deliberately not offered: bootc does not support logically bound images with Anaconda, so an ISO
-# would boot without the runner image.
+# `bootc install`). The runner image is embedded in the OS image, so the host runs without any registry.
 #
 # The compressed image is uploaded to Azure blob storage (secret AZURE_STORAGE_CONNECTION_STRING, variable
 # AZURE_STORAGE_CONTAINER): it is about 3.7 GiB, more than the 2 GiB a GitHub release asset can hold.

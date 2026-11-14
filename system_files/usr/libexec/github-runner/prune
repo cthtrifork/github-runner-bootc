@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 # Weekly and on demand: remove stopped containers and unused images from the per-instance storage of runners that are not
-# running. The host-wide bound image store is owned by bootc and never touched.
+# running. The runner image itself (loaded by github-runner-image-load.service) is never touched.
 set -uo pipefail
 
 for dir in /var/lib/github-runner/[0-9]*; do

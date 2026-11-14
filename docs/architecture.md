@@ -11,7 +11,7 @@ flowchart LR
         SRC["This repo<br/>Containerfile, Quadlet,<br/>scripts, workflows"]
         CI["build.yaml<br/>build and push"]
         E2E["Opt-in labels<br/>e2e: QEMU, no network<br/>e2e-live: real job"]
-        DISK["create-disk-image.yaml<br/>raw disk with bound image"]
+        DISK["create-disk-image.yaml<br/>raw disk (runner image inside)"]
         SRC --> CI --> E2E
         CI --> DISK
     end
@@ -28,7 +28,7 @@ flowchart LR
     subgraph HOST["Host: VM or bare metal (bootc, x86_64)"]
         direction TB
         BOOTC["bootc OS<br/>nightly update, drains first"]
-        BOUND[("Bound image store<br/>/usr/lib/bootc/storage<br/>runner image, no pull")]
+        BOUND[("Runner image<br/>embedded in the OS image,<br/>loaded at first boot")]
         subgraph UNITS["systemd: github-runner@N"]
             direction TB
             MINT["mint-jitconfig<br/>single-use JIT config"]
@@ -47,9 +47,8 @@ flowchart LR
     DISK --> DEST
     DEST -- "dd / bootc install" --> HOST
     OS -- "bootc install, switch, upgrade" --> BOOTC
-    RUN -- "pulled at install and upgrade" --> BOUND
+    RUN -- "copied into the OS image<br/>at build time" --> OS
     MIRROR -.-> BOOTC
-    MIRROR -.-> BOUND
     APP -. "key seeded once" .-> SEED
     MINT -- "installation token,<br/>generate-jitconfig" --> GH
     CTR <-- "long poll, job, logs" --> GH
@@ -69,16 +68,16 @@ sequenceDiagram
 
     D->>CI: PR (labels e2e, e2e-live, disk, push)
     CI->>R: build and push OS image
-    CI->>CI: QEMU boot, no network: bound image must work offline
+    CI->>CI: QEMU boot, no network: embedded runner image must work offline
     CI->>CI: e2e-live: VM registers a runner, live job runs on it
     CI-->>D: raw disk (Azure blob)
 
-    Note over H: Install once: dd the disk, or bootc install.<br/>The runner image is bound, so it is already on the disk.
+    Note over H: Install once: dd the disk, or bootc install.<br/>The runner image is embedded, so it is already on the disk.
     D->>H: github-runner-seed-app (GitHub App key)
 
     loop for every job
         S->>G: installation token, then generate-jitconfig (single use)
-        S->>S: start container from the bound image (Pull=never)
+        S->>S: start container from the local image (Pull=never)
         S->>G: runner connects, waits for a job
         G-->>S: job
         S->>G: logs and result

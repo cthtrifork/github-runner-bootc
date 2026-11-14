@@ -3,17 +3,19 @@ Description=GitHub Actions runner %i (ephemeral, one job per container)
 Documentation=https://github.com/cthtrifork/github-runner-bootc
 Wants=network-online.target
 After=network-online.target
+# The runner image is embedded in the OS image and loaded into the container storage by this unit (no registry).
+Requires=github-runner-image-load.service
+After=github-runner-image-load.service
 # Idle until github-runner-seed-app has stored the GitHub App credentials.
 ConditionPathExists=/etc/github-runner/private-key.pem
 # Keep retrying: a failed JIT mint (no route to GitHub, clock not set yet) must never end in "start-limit-hit".
 StartLimitIntervalSec=0
 
 [Container]
-# Same literal reference as github-runner.image. bootc pulls it into the bound store; Pull=never makes sure podman never
-# contacts a registry, so the unit also works airgapped.
+# Loaded from the embedded OCI directory by github-runner-image-load.service; Pull=never makes sure podman never contacts
+# a registry, so the unit also works airgapped. The tag must equal RUNNER_IMAGE_TAG in github-runner.containerfile.
 Image=ghcr.io/cthtrifork/talos-gitops/github-actions-runner:v0.11.0
 Pull=never
-GlobalArgs=--storage-opt=additionalimagestore=/usr/lib/bootc/storage
 ContainerName=github-runner-%i
 Exec=/home/runner/run.sh
 User=1001

@@ -1,7 +1,7 @@
 name: Install the image to a raw disk
 description: >-
-  Installs a bootc image into a sparse raw disk with `bootc install to-disk --via-loopback`. The runner image the OS
-  image binds (github-runner.image) is pulled into root containers-storage first, so bootc copies it onto the disk.
+  Installs a bootc image into a sparse raw disk with `bootc install to-disk --via-loopback`. The runner image is
+  embedded in the OS image, so nothing else has to be pulled.
 inputs:
   image:
     description: Image to install, with tag
@@ -27,7 +27,7 @@ runs:
       with:
         target-dir: /var/lib/containers
 
-    - name: Pull the image and the runner image it binds
+    - name: Pull the image
       shell: bash
       env:
         IMAGE: ${{ inputs.image }}
@@ -36,8 +36,6 @@ runs:
         set -euo pipefail
         printf '%s' "$TOKEN" | sudo podman login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
         sudo podman pull -q "$IMAGE"
-        # the bound image comes from the image being installed, not from this checkout
-        sudo podman pull -q "$(sudo podman run --rm "$IMAGE" sed -n 's/^Image=//p' /usr/share/containers/systemd/github-runner.image)"
 
     - name: Install to a raw disk
       id: install

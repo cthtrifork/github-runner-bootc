@@ -27,27 +27,26 @@ if systemctl is-active --quiet 'github-runner@1.service'; then
     exit 1
 fi
 
-echo "--- bound runner image (works without a registry) ---"
-ref="$(sed -n 's/^Image=//p' /usr/share/containers/systemd/github-runner.image)"
-echo "bound image: $ref"
-test -L /usr/lib/bootc/bound-images.d/github-runner.image
-[ "$(sed -n 's/^Image=//p' '/usr/share/containers/systemd/github-runner@.container')" = "$ref" ]
+echo "--- embedded runner image (works without a registry) ---"
+ref="$(sed -n 's/^Image=//p' '/usr/share/containers/systemd/github-runner@.container')"
+echo "runner image: $ref"
+test -d /usr/share/github-runner/runner-image
 grep -qx 'Pull=never' '/usr/share/containers/systemd/github-runner@.container'
-podman --storage-opt=additionalimagestore=/usr/lib/bootc/storage image exists "$ref" || {
-    echo "the runner image is not in the bootc bound store: the disk image was built without it"
-    bootc image list 2>&1 || true
+systemctl is-enabled --quiet github-runner-image-load.service
+systemctl start github-runner-image-load.service
+podman image exists "$ref" || {
+    echo "the runner image was not loaded into the container storage"
+    journalctl -u github-runner-image-load.service --no-pager | tail -20
     exit 1
 }
 
 echo "--- the generated unit never pulls ---"
 unit="$(systemctl cat 'github-runner@1.service')"
 grep -q -- '--pull=never\|--pull never' <<<"$unit" || { echo "generated unit does not pass --pull=never"; echo "$unit"; exit 1; }
-grep -q 'additionalimagestore=/usr/lib/bootc/storage' <<<"$unit"
 
-echo "--- the container starts from the bound store with the registry unreachable ---"
+echo "--- the container starts from the local storage with the registry unreachable ---"
 # Run the image's own entrypoint with no JIT config: it must start and fail on the missing config, not on a pull.
-out="$(podman --storage-opt=additionalimagestore=/usr/lib/bootc/storage run --rm --pull=never --user 1001 \
-    "$ref" /home/runner/run.sh 2>&1 || true)"
+out="$(podman run --rm --pull=never --user 1001 "$ref" /home/runner/run.sh 2>&1 || true)"
 echo "$out" | head -20
 if grep -qiE 'unable to pull|pinging container registry|no such host|lookup .* on|dial tcp' <<<"$out"; then
     echo "the runner tried to use the network"

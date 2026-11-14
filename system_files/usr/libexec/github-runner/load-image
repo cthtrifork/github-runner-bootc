@@ -1,0 +1,18 @@
+#!/usr/bin/bash
+# Load the runner image that is embedded in the OS image (/usr/share/github-runner/runner-image) into the container
+# storage, without a registry: the first boot after an install or after an OS update that changed the runner version.
+set -euo pipefail
+
+ref="$(sed -n 's/^Image=//p' '/usr/share/containers/systemd/github-runner@.container')"
+tag="${ref##*:}"
+repo="${ref%:*}"
+
+if podman image exists "$ref"; then
+    echo "$ref is already loaded"
+else
+    echo "Loading $ref"
+    skopeo copy "oci:/usr/share/github-runner/runner-image:${tag}" "containers-storage:${ref}"
+fi
+
+# Drop runner images of earlier OS versions; the jobs' own images live in the containers' storage, not here.
+podman images --format '{{.Repository}}:{{.Tag}}' | { grep -F "${repo}:" || true; } | { grep -vxF "$ref" || true; } | xargs -r podman rmi
