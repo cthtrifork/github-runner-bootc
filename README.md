@@ -4,8 +4,7 @@ A [bootc](https://containers.github.io/bootc/) image (Fedora, x86_64) that turns
 ephemeral self-hosted GitHub Actions runner. Sister project of
 [homeserver-bootc](https://github.com/cthtrifork/homeserver-bootc), whose CI it reuses.
 
-**Status:** bootstrapping. Only the repository tooling (lint, PR title check, self-hosted Renovate) exists so far;
-the image comes next.
+**Status:** first image. Not yet published or run on a real host.
 
 ## Plan in short
 
@@ -14,6 +13,35 @@ the image comes next.
 - One ephemeral (JIT) runner per job through a `github-runner@.service` template unit.
 - Updates by bootc, drained so a reboot never interrupts a job.
 - CI: build, rechunk, scan, sign, release, plus an opt-in `e2e` / `e2e-live` pair of PR labels.
+
+## How it works
+
+- `github-runner@.container` (Quadlet) runs the runner image from the ARC scale sets
+  (`ghcr.io/cthtrifork/talos-gitops/github-actions-runner`), one container per job and one instance per slot.
+- Before each start `mint-jitconfig` trades the seeded GitHub App key for a single-use JIT runner configuration.
+- The runner image is a bootc *logically bound image*: bootc pulls it at install, switch and upgrade into
+  `/usr/lib/bootc/storage`, and the unit uses `Pull=never`, so the host needs no registry to run.
+- `github-runner-update.timer` stages OS updates at night and reboots only after the runners are idle.
+
+### Use it
+
+1. Get a disk image: run the **Create disk image** workflow (raw image with the bound runner image, attached to a
+   release in parts below 2 GiB), or `bootc install to-disk` from a host that has the image and the runner image in
+   its container storage. An Anaconda ISO would not carry the bound image.
+2. Boot it, then seed the GitHub App: `sudo github-runner-seed-app --scope repo:owner/name --app-id N
+   --installation-id N [--instances 2] key.pem` (org scope: `--scope org:name`).
+3. Airgapped sites: point `/etc/containers/registries.conf.d/` at an internal mirror (OS image and runner image),
+   `chrony` at an internal NTP server, and add a drop-in `/etc/containers/systemd/github-runner@.container.d/10-site.conf`
+   with extra `Volume=` lines (private CA, mirror config) for the job containers. The runner itself only needs GitHub.
+
+### Tests
+
+PR labels opt in to the slow tests; both need the image to be pushed, which the label does:
+
+- `e2e`: boots the image in QEMU with a restricted network and runs `tests/system-test.sh` (the bound image must be
+  usable with no registry).
+- `e2e-live`: then boots with a network, registers one ephemeral runner with the label `e2e-<run id>` and runs the
+  `live job` on it. Same-repository PRs only.
 
 ## Security
 
@@ -35,3 +63,13 @@ the `PR title` workflow. Every change needs review from the code owner.
 | Secret | `PAT_RENOVATEBOT` | `renovate.yaml` (ghcr.io lookups) |
 
 The Renovate GitHub App must be installed on this repository.
+
+For the `e2e-live` label, create a second GitHub App for tests (repository permission *Administration: read and
+write*, installed on this repository only) and set:
+
+| Kind | Name |
+|---|---|
+| Variable | `E2E_APP_CLIENT_ID`, `E2E_APP_ID`, `E2E_INSTALLATION_ID` |
+| Secret | `E2E_APP_PRIVATE_KEY` |
+
+Create the labels `e2e`, `e2e-live` and `push`.
