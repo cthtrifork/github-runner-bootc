@@ -4,10 +4,13 @@ A [bootc](https://containers.github.io/bootc/) image (Fedora 45, x86_64) that tu
 ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh container from the
 [ARC runner image](https://github.com/cthtrifork/talos-gitops).
 
-| Image | Runner image | Use it when |
-|---|---|---|
-| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | the host can reach a registry or a mirror |
-| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image (about 3.5 GiB larger) | the host has no registry or network (airgap) |
+| Image | Runner image | Size | Use it when | Links |
+|---|---|---|---|---|
+| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | small | the host can reach a registry or a mirror | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/github-runner-bootc) |
+| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image | about 3.5 GiB larger | the host has no registry or network (airgap) | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/offline-github-runner-bootc) |
+
+Both are published with every build of `main` and the weekly rebuild: see the [releases](https://github.com/cthtrifork/github-runner-bootc/releases)
+for the tags and the changes, and the [architecture](docs/architecture.md) for how it fits together.
 
 ```mermaid
 flowchart LR
