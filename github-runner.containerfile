@@ -14,9 +14,9 @@ RUN dnf -y install --setopt=install_weak_deps=False \
 RUN cp /usr/share/dnf5/repos.d/fedora.repo /usr/share/dnf5/repos.d/fedora-updates.repo /etc/yum.repos.d/
 
 # Embedded as an OCI directory (a plain copy, no privileges needed) before anything that changes often, so updates reuse
-# its large layer. The tag must equal the Image= line of github-runner@.container (tests/check-image-refs.sh).
+# its large layer. The tag must equal the Image= line of github-runner@.container (Renovate bumps both together, see .github/renovate.json5).
 ARG RUNNER_IMAGE=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
-ARG RUNNER_IMAGE_TAG=v0.11.0 # renovate: datasource=docker depName=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
+ARG RUNNER_IMAGE_TAG=v0.13.0 # renovate: datasource=docker depName=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
 ARG EMBED_RUNNER_IMAGE=false
 RUN mkdir -p /usr/share/github-runner \
     && if [ "${EMBED_RUNNER_IMAGE}" = true ]; then \
