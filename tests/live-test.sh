@@ -10,7 +10,7 @@ seed)
         "github-runner-seed-app --scope repo:${GITHUB_REPOSITORY} --app-id ${RUNNER_APP_CLIENT_ID} --installation-id ${RUNNER_INSTALLATION_ID} --labels self-hosted,Linux,X64,bootc,e2e-${RUN_ID}"
     ;;
 wait)
-    for _ in $(seq 1 120); do
+    for _ in $(seq 1 40); do
         state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" --jq '[.jobs[] | select(.name=="live job") | .conclusion] | first // ""')"
         [ -n "$state" ] && break
         sleep 15

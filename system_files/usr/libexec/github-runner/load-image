@@ -16,5 +16,8 @@ else
     podman pull --retry 3 "$ref"
 fi
 
+# make sure the several GiB copy is on disk if the power goes right after the first boot
+sync
+
 # drop runner images of earlier OS versions
 podman images --format '{{.Repository}}:{{.Tag}}' | { grep -F "${repo}:" || true; } | { grep -vxF "$ref" || true; } | xargs -r podman rmi

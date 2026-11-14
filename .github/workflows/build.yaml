@@ -218,6 +218,7 @@ jobs:
 
       - name: Wait until the live job has run on the VM
         if: ${{ env.LIVE == 'true' }}
+        timeout-minutes: 12
         run: tests/live-test.sh wait
         env:
           RUN_ID: ${{ github.run_id }}
@@ -232,7 +233,7 @@ jobs:
 
       - name: Journals in the summary
         if: ${{ always() }}
-        run: for f in out/journal/*.log; do printf '<details><summary>%s</summary>\n\n```\n' "$f"; tail -n 200 "$f"; printf '```\n</details>\n'; done >> "$GITHUB_STEP_SUMMARY"
+        run: for f in out/journal/*.log; do printf '<details><summary>%s</summary>\n\n```\n' "$f"; tail -n 200 "$f"; printf '```\n</details>\n'; done | tee -a "$GITHUB_STEP_SUMMARY"
 
       - name: Cancel the run when the VM test failed
         if: ${{ failure() && env.LIVE == 'true' }}
