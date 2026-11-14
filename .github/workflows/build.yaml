@@ -44,10 +44,9 @@ jobs:
     timeout-minutes: 5
     permissions:
       contents: read
-      pull-requests: read # the files of the pull request
       packages: read # the revision label of the published images
     outputs:
-      build: ${{ steps.gate.outputs.build == 'true' && (github.event_name != 'pull_request' || steps.changes.outputs.image == 'true' || steps.changes.outputs.ci == 'true') }}
+      build: ${{ steps.gate.outputs.build == 'true' && (github.event_name != 'pull_request' || steps.changes.outputs.image_any_changed == 'true' || steps.changes.outputs.ci_any_changed == 'true') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -57,10 +56,9 @@ jobs:
       - name: Changed files
         id: changes
         if: ${{ github.event_name == 'pull_request' }}
-        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        uses: tj-actions/changed-files@9426d40962ed5378910ee2e21d5f8c6fcbf2dd96 # v47.0.6
         with:
-          token: ${{ github.token }}
-          filters: |
+          files_yaml: |
             image:
               - github-runner.containerfile
               - system_files/**
