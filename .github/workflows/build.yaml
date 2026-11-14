@@ -104,7 +104,7 @@ jobs:
     name: E2E (${{ needs.build.outputs.tier }})
     needs: build
     if: ${{ needs.build.outputs.tier != 'none' && needs.build.outputs.pushed == 'true' && github.event.pull_request.draft != true }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 45
     permissions:
       contents: read
@@ -160,20 +160,20 @@ jobs:
         if: ${{ env.LIVE == 'true' }}
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
         with:
-          client-id: ${{ vars.E2E_APP_CLIENT_ID }}
-          private-key: ${{ secrets.E2E_APP_PRIVATE_KEY }}
+          client-id: ${{ vars.RUNNER_APP_CLIENT_ID }}
+          private-key: ${{ secrets.RUNNER_APP_PRIVATE_KEY }}
           owner: ${{ github.repository_owner }}
           repositories: ${{ github.event.repository.name }}
           permission-administration: write
 
-      - name: Seed the test App and start the runner
+      - name: Seed the App and start the runner
         if: ${{ env.LIVE == 'true' }}
         run: tests/live-test.sh seed
         env:
           RUN_ID: ${{ github.run_id }}
-          E2E_APP_ID: ${{ vars.E2E_APP_ID }}
-          E2E_INSTALLATION_ID: ${{ vars.E2E_INSTALLATION_ID }}
-          E2E_APP_PRIVATE_KEY: ${{ secrets.E2E_APP_PRIVATE_KEY }}
+          RUNNER_APP_CLIENT_ID: ${{ vars.RUNNER_APP_CLIENT_ID }}
+          RUNNER_INSTALLATION_ID: ${{ vars.RUNNER_INSTALLATION_ID }}
+          RUNNER_APP_PRIVATE_KEY: ${{ secrets.RUNNER_APP_PRIVATE_KEY }}
 
       - name: Wait until the live job has run on the VM
         if: ${{ env.LIVE == 'true' }}

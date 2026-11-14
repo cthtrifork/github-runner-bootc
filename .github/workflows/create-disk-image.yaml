@@ -42,7 +42,7 @@ jobs:
     name: Raw disk image
     # Other labels (Renovate adds several) and forks start nothing.
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.label.name == 'disk' && github.event.pull_request.head.repo.fork != true) }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     timeout-minutes: 90
     permissions:
       contents: read
