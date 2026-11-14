@@ -110,7 +110,10 @@ jobs:
         with:
           persist-credentials: false
 
-      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+      - name: More disk for container storage
+        uses: ublue-os/container-storage-action@dc1f4c8f17b672069e921f001132f7cf98a423a6 # main (the action has no tags) # zizmor: ignore[stale-action-refs]
+        with:
+          target-dir: /var/lib/containers
 
       - uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         if: ${{ env.PUSH == 'true' }}
@@ -132,19 +135,15 @@ jobs:
             containers.bootc=1
             org.opencontainers.image.licenses=Apache-2.0
 
-      - name: Build and push
+      - name: Build, rechunk and push
         id: build
-        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        uses: ./.github/actions/build-chunked-image
         with:
-          context: .
-          file: github-runner.containerfile
-          push: ${{ env.PUSH == 'true' }}
+          containerfile: github-runner.containerfile
+          embed: ${{ matrix.embed }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          provenance: false
-          build-args: EMBED_RUNNER_IMAGE=${{ matrix.embed }}
-          cache-from: type=gha,scope=${{ matrix.variant }}
-          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
+          push: ${{ env.PUSH }}
 
       # All CRITICAL/HIGH vulnerabilities, including ones with no fix yet (dnf updateinfo only lists fixed advisories);
       # report only (the weekly rebuild picks fixes up), so a new CVE in a base package does not turn every PR red.

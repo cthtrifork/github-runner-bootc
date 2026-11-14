@@ -1,0 +1,73 @@
+name: Build a chunked image
+description: >-
+  Builds the Containerfile with rootful podman, rechunks the result with chunkah (content-based layers, so an update only
+  downloads what changed) and pushes it under every tag.
+inputs:
+  containerfile:
+    description: Containerfile to build
+    required: true
+  embed:
+    description: Value of the EMBED_RUNNER_IMAGE build argument
+    required: true
+  tags:
+    description: Full image references to push, one per line
+    required: true
+  labels:
+    description: Image labels, one per line
+    required: true
+  push:
+    description: Push the image (otherwise it is only built and rechunked)
+    default: "false"
+outputs:
+  digest:
+    description: Digest of the pushed image
+    value: ${{ steps.push.outputs.digest }}
+runs:
+  using: composite
+  steps:
+    - name: Build
+      shell: bash
+      env:
+        CONTAINERFILE: ${{ inputs.containerfile }}
+        EMBED: ${{ inputs.embed }}
+        LABELS: ${{ inputs.labels }}
+      run: | #sh
+        set -euo pipefail
+        labels=()
+        while IFS= read -r line; do [ -n "$line" ] && labels+=(--label "$line"); done <<<"$LABELS"
+        sudo podman build --format docker -f "$CONTAINERFILE" --build-arg "EMBED_RUNNER_IMAGE=$EMBED" "${labels[@]}" -t localhost/build:latest .
+
+    # SOURCE_DATE_EPOCH clamps the file mtimes so unchanged packages give identical layers. The image is mounted from root's
+    # containers-storage and OSTree data is pruned: this is a plain layered bootc image.
+    - name: Rechunk with chunkah
+      shell: bash
+      env:
+        CHUNKAH_IMAGE: quay.io/coreos/chunkah:v0.7.1
+      run: | #sh
+        set -euo pipefail
+        out="$RUNNER_TEMP/chunked"
+        rm -rf "$out" && mkdir -p "$out"
+        CHUNKAH_CONFIG_STR="$(sudo podman inspect localhost/build:latest)"
+        export CHUNKAH_CONFIG_STR
+        sudo --preserve-env=CHUNKAH_CONFIG_STR podman run --rm --security-opt label=disable \
+          --mount type=image,src=localhost/build:latest,target=/chunkah \
+          -v "$out:/out" -e CHUNKAH_CONFIG_STR -e SOURCE_DATE_EPOCH=1 \
+          "$CHUNKAH_IMAGE" build --prune /sysroot/ --max-layers 128 \
+            --label ostree.commit- --label ostree.final-diffid- \
+            --compressed --compression-level 3 --output oci:/out/img
+        sudo chown -R "$(id -u):$(id -g)" "$out"
+        # SOURCE_DATE_EPOCH leaves the creation time at 1970, and the weekly gate reads it
+        python3 -I .github/scripts/set-image-created.py "$out/img" "$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    - name: Push
+      id: push
+      if: ${{ inputs.push == 'true' }}
+      shell: bash
+      env:
+        TAGS: ${{ inputs.tags }}
+      run: | #sh
+        set -euo pipefail
+        for tag in $TAGS; do
+          skopeo copy --digestfile "$RUNNER_TEMP/digest" "oci:$RUNNER_TEMP/chunked/img" "docker://$tag"
+        done
+        echo "digest=$(cat "$RUNNER_TEMP/digest")" >> "$GITHUB_OUTPUT"
