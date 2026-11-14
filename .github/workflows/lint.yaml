@@ -1,13 +1,6 @@
 name: Lint
 on:
-  pull_request:
-    paths:
-      - ".github/**"
-      - "**/*.sh"
-      - "*.containerfile"
-      - "build_files/**"
-      - "tests/**"
-      - "system_files/**"
+  pull_request: # always, the jobs are required checks and take seconds
   push:
     branches:
       - main
