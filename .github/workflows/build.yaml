@@ -72,6 +72,43 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ github.token }}
 
+      - name: Check whether the scheduled image needs a rebuild
+        id: freshness
+        if: ${{ github.event_name == 'schedule' }}
+        run: |
+          image_created() {
+            local image_ref="$1"
+            local manifest digest
+
+            manifest="$(docker buildx imagetools inspect --raw "$image_ref")"
+            digest="$(jq -r '[.manifests[]? | select(.platform.os == "linux" and .platform.architecture == "amd64") | .digest] | first // empty' <<< "$manifest")"
+            if [[ -n "$digest" ]]; then
+              image_ref="$image_ref@$digest"
+            fi
+            docker buildx imagetools inspect --format '{{ .Image.Created }}' "$image_ref"
+          }
+
+          base_image="$(awk '$1 == "FROM" { print $2; exit }' github-runner.containerfile)"
+          if [[ -z "$base_image" ]]; then
+            echo "could not read the base image from github-runner.containerfile" >&2
+            exit 1
+          fi
+
+          base_created="$(image_created "$base_image")"
+          published_created="$(image_created "$IMAGE:main")"
+          if [[ -z "$base_created" || -z "$published_created" ]]; then
+            echo "could not read image creation times" >&2
+            exit 1
+          fi
+
+          if .github/scripts/image-needs-rebuild.sh "$base_created" "$published_created"; then
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            echo "The base image is newer or the published image is at least 14 days old."
+          else
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            echo "The published image is up to date; skipping the build."
+          fi
+
       - name: Tags and labels
         id: meta
         uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
@@ -88,6 +125,7 @@ jobs:
       - name: Build and push
         id: build
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        if: ${{ github.event_name != 'schedule' || steps.freshness.outputs.build == 'true' }}
         with:
           context: .
           file: github-runner.containerfile
@@ -101,7 +139,7 @@ jobs:
       # Vulnerabilities with a fix available; report only (the weekly rebuild picks fixes up), so a new CVE in a base
       # package does not turn every PR red.
       - name: Trivy scan
-        if: ${{ env.PUSH == 'true' }}
+        if: ${{ env.PUSH == 'true' && (github.event_name != 'schedule' || steps.freshness.outputs.build == 'true') }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
@@ -115,7 +153,7 @@ jobs:
           TRIVY_PASSWORD: ${{ github.token }}
 
       - name: Attest build provenance
-        if: ${{ env.PUSH == 'true' && github.event_name != 'pull_request' }}
+        if: ${{ env.PUSH == 'true' && github.event_name != 'pull_request' && (github.event_name != 'schedule' || steps.freshness.outputs.build == 'true') }}
         uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
         with:
           subject-name: ${{ env.IMAGE }}

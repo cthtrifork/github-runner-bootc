@@ -87,6 +87,9 @@ jobs:
       - name: The embedded image and the unit use the same tag
         run: tests/check-image-refs.sh
 
+      - name: The scheduled build skips images that are up to date
+        run: tests/check-image-freshness.sh
+
   hadolint:
     name: hadolint
     runs-on: ubuntu-slim
