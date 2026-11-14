@@ -6,6 +6,7 @@ set -euo pipefail
 iso="${1:?Usage: $0 <iso> <disk>}"
 disk="${2:?Usage: $0 <iso> <disk>}"
 
+sudo apt-get install -y --no-install-recommends -qq qemu-system-x86 ovmf
 truncate -s 40G "$disk"
 cp /usr/share/OVMF/OVMF_VARS_4M.fd out/ovmf-vars.fd
 sudo timeout 40m qemu-system-x86_64 -name iso-install -enable-kvm -cpu host -smp "$(nproc)" -m 6G -no-reboot \
