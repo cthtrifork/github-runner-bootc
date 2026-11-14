@@ -1,13 +1,10 @@
 name: Build and test bootc image
 
-# Builds the image on every relevant change and publishes it from main. Two opt-in test tiers run on a PR when a
-# maintainer adds the label (or on a manual run with `tier`):
-#   e2e       boot the image in QEMU with the network restricted and check the embedded runner image works offline
-#   e2e-live  everything in e2e, then boot with a network and run a real job on the runner the VM registers
-# `labeled` only triggers for the labels the build reads; other labels (Renovate adds several) are ignored.
+# Builds both images and publishes them from main. The PR labels `e2e` (boot in QEMU, the offline image with no network)
+# and `e2e-live` (also run a real job on the VM's runner) opt in to the tests; `push` publishes the PR image.
 on:
   schedule:
-    - cron: "17 3 * * 0" # Sunday: pick up the weekly Fedora and runner updates
+    - cron: "17 3 * * 0"
   workflow_dispatch:
     inputs:
       tier:
@@ -18,37 +15,84 @@ on:
   pull_request:
     types: [opened, synchronize, reopened, ready_for_review, labeled]
     branches: [main]
-    paths-ignore:
-      - "**/*.md"
   push:
     branches: [main]
-    paths-ignore:
-      - "**/*.md"
 
 permissions:
   contents: read
 
 concurrency:
   group: build-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' || github.event_name == 'push' }}
+  # a label that starts nothing (the iso label, Renovate's labels) must not cancel a running build
+  cancel-in-progress: ${{ github.event_name == 'push' || (github.event_name == 'pull_request' && (github.event.action != 'labeled' || contains(fromJSON('["e2e","e2e-live","push"]'), github.event.label.name))) }}
 
 env:
-  IMAGE: ghcr.io/${{ github.repository }}
-  # The tag the build pushes for this ref: pr-<n> on a PR, the branch name otherwise.
   TAG: ${{ github.event_name == 'pull_request' && format('pr-{0}', github.event.pull_request.number) || github.ref_name }}
-  # The test tier to run: the label on a PR (e2e-live implies e2e) or the dispatch input.
   TIER: ${{ (github.event_name == 'workflow_dispatch' && inputs.tier) || (contains(github.event.pull_request.labels.*.name, 'e2e-live') && 'e2e-live') || (contains(github.event.pull_request.labels.*.name, 'e2e') && 'e2e') || 'none' }}
-  # Publish from main, schedule and manual runs; from a PR only when a test tier or the `push` label asks for it (the
-  # e2e job pulls the image from the registry), and never from a fork (its token cannot write packages).
+  # a PR image is pushed only when a label asks for it, never from a fork
   PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.fork != true && (contains(github.event.pull_request.labels.*.name, 'push') || contains(github.event.pull_request.labels.*.name, 'e2e') || contains(github.event.pull_request.labels.*.name, 'e2e-live'))) }}
 
 jobs:
+  # A push to main builds, and so releases, only when the image changed. A PR also builds when the tests or the build
+  # workflow changed. The weekly run builds only when the base image is newer or the published image is 14 days old.
+  gate:
+    name: Decide whether to build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: read # the files of the pull request
+    outputs:
+      build: ${{ steps.gate.outputs.build == 'true' && (github.event_name == 'schedule' || github.event_name == 'workflow_dispatch' || steps.changes.outputs.image == 'true' || (github.event_name == 'pull_request' && steps.changes.outputs.ci == 'true')) }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Changed files
+        id: changes
+        if: ${{ github.event_name == 'push' || github.event_name == 'pull_request' }}
+        uses: dorny/paths-filter@ceb8a2b8f2d89434be7ff52d3de7ec3738c5cc9d # v4.0.3
+        with:
+          token: ${{ github.token }}
+          filters: |
+            image:
+              - github-runner.containerfile
+              - system_files/**
+            ci:
+              - tests/**
+              - .github/workflows/build.yaml
+              - .github/actions/**
+              - .github/scripts/**
+
+      - name: Gate
+        id: gate
+        run: .github/scripts/image-needs-rebuild.sh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IMAGE: ghcr.io/${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ github.token }}
+
   build:
-    name: Build image
-    # `labeled` is only a trigger for the labels the build reads (see the header).
-    if: ${{ github.event.action != 'labeled' || contains(fromJSON('["e2e","e2e-live","push"]'), github.event.label.name) }}
+    name: Build ${{ matrix.variant }} image
+    needs: gate
+    # other labels (Renovate adds several) start nothing
+    if: ${{ needs.gate.outputs.build == 'true' && (github.event.action != 'labeled' || contains(fromJSON('["e2e","e2e-live","push"]'), github.event.label.name)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: default
+            image: ghcr.io/${{ github.repository }}
+            embed: "false"
+          - variant: offline
+            image: ghcr.io/${{ github.repository_owner }}/offline-${{ github.event.repository.name }}
+            embed: "true"
+    env:
+      IMAGE: ${{ matrix.image }}
     permissions:
       contents: read
       packages: write # push the image to ghcr.io
@@ -56,6 +100,7 @@ jobs:
       attestations: write # store the provenance attestation
       security-events: write # upload the Trivy SARIF to code scanning
     outputs:
+      version: ${{ steps.meta.outputs.version }}
       tag: ${{ env.TAG }}
       tier: ${{ env.TIER }}
       pushed: ${{ env.PUSH }}
@@ -79,8 +124,8 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=${{ env.TAG }}
             type=raw,value=main-{{date 'YYYYMMDD'}}-${{ github.run_number }},enable={{is_default_branch}}
+            type=raw,value=${{ env.TAG }}
             type=raw,value=latest,enable={{is_default_branch}}
           labels: |
             containers.bootc=1
@@ -95,9 +140,10 @@ jobs:
           push: ${{ env.PUSH == 'true' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
-          provenance: false # a plain image manifest, not an index with an attestation
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          provenance: false
+          build-args: EMBED_RUNNER_IMAGE=${{ matrix.embed }}
+          cache-from: type=gha,scope=${{ matrix.variant }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 
       # All CRITICAL/HIGH vulnerabilities, including ones with no fix yet (dnf updateinfo only lists fixed advisories);
       # report only (the weekly rebuild picks fixes up), so a new CVE in a base package does not turn every PR red.
@@ -121,9 +167,9 @@ jobs:
         uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
         with:
           sarif_file: trivy.sarif
-          category: trivy-image
+          category: trivy-${{ matrix.variant }}
 
-      # Pending Fedora security advisories for the pushed image (the built PR image, or the latest image on main).
+      # Pending Fedora security advisories for each pushed image.
       - name: Pending security updates (dnf updateinfo)
         if: ${{ env.PUSH == 'true' }}
         run: | #sh
@@ -164,23 +210,31 @@ jobs:
           subject-digest: ${{ steps.build.outputs.digest }}
           push-to-registry: true
 
-  # Boot the image in QEMU on a hosted runner and run tests/system-test.sh inside it.
-  #   1. The network is restricted (only the SSH forward works), so everything has to work with no registry or internet:
-  #      this is the airgap test.
-  #   2. e2e-live: boot again with a network, seed a test GitHub App, let the VM register one ephemeral runner with the
-  #      label e2e-<run id>, and the `live-job` below runs on it.
+  # The offline image boots with only the SSH forward reachable (the airgap test); e2e-live then boots it again with a
+  # network, seeds the GitHub App and lets the VM register a runner for the `live job`.
   e2e:
-    name: E2E (${{ needs.build.outputs.tier }})
+    name: E2E ${{ matrix.variant }} (${{ needs.build.outputs.tier }})
     needs: build
     if: ${{ needs.build.outputs.tier != 'none' && needs.build.outputs.pushed == 'true' && github.event.pull_request.draft != true }}
     runs-on: ubuntu-latest
     timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - variant: default
+            image: ghcr.io/${{ github.repository }}
+            restricted: false
+          - variant: offline
+            image: ghcr.io/${{ github.repository_owner }}/offline-${{ github.event.repository.name }}
+            restricted: true
     permissions:
       contents: read
       packages: read # pull the image that the build job pushed
-      actions: write # cancel the run when the VM fails, so the live job does not wait for a runner that never comes
+      actions: write # cancel the run when the VM fails, so the live job does not wait for a runner
     env:
-      LIVE: ${{ needs.build.outputs.tier == 'e2e-live' }}
+      IMAGE: ${{ matrix.image }}
+      LIVE: ${{ needs.build.outputs.tier == 'e2e-live' && matrix.restricted }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -197,24 +251,24 @@ jobs:
           authorized_keys_file: out/authorized_keys
           token: ${{ github.token }}
 
-      - name: Boot with a restricted network (airgap test)
+      - name: Boot (restricted network for the offline image, the airgap test)
         uses: ./.github/actions/boot-vm
         with:
           disk: ${{ steps.disk.outputs.path }}
           ssh_key: out/ci_ssh_key
-          network: restricted
+          network: ${{ matrix.restricted && 'restricted' || 'open' }}
 
-      - name: System tests, offline
+      - name: System tests
         run: tests/vm-ssh.sh bash -s < tests/system-test.sh
 
       - name: Save the journal and stop the VM
         if: ${{ always() }}
-        run: tests/vm-stop.sh offline
+        run: tests/vm-stop.sh first
 
       - name: The offline journal has no registry lookups
-        run: "! grep -iE 'pinging container registry|unable to pull|Trying to pull' out/journal/offline.log"
+        if: ${{ matrix.restricted }}
+        run: "! grep -iE 'pinging container registry|unable to pull|Trying to pull' out/journal/first.log"
 
-      # ---- live tier ----
       - name: Boot with a network (live tier)
         if: ${{ env.LIVE == 'true' }}
         uses: ./.github/actions/boot-vm
@@ -269,7 +323,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
 
-  # Runs on the runner the VM above registers: the unique label means no other workflow can land on it.
+  # runs on the runner the VM registers; the unique label keeps other workflows off it
   live-job:
     name: live job
     needs: build
@@ -284,3 +338,22 @@ jobs:
 
       - name: Podman works inside the runner
         run: printf 'FROM scratch\nCOPY hello /hello\n' > Containerfile && echo hello > hello && buildah bud -t localhost/live-test:1 . && podman images localhost/live-test
+
+  # Every build of main (a merge, the weekly schedule, a manual run) publishes a release named like the image tag, with
+  # notes drafted from the merged pull request titles.
+  release:
+    name: Release
+    needs: build
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.pushed == 'true' }}
+    runs-on: ubuntu-slim
+    timeout-minutes: 5
+    permissions:
+      contents: write # create the release and its tag
+      pull-requests: read # the merged pull requests since the last release
+    steps:
+      - uses: release-drafter/release-drafter@d1a19e60e81a7e650d00a7de9277f87e439117ea # v7.11.0
+        with:
+          tag: ${{ needs.build.outputs.version }}
+          name: ${{ needs.build.outputs.version }}
+          commitish: ${{ github.sha }}
+          publish: true

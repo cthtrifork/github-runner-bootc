@@ -1,6 +1,5 @@
 #!/usr/bin/bash
-# Nightly: stage an OS update with `bootc upgrade` and, only when one is staged, drain the runners and reboot, so a reboot
-# never kills a job. Offline or airgapped hosts just log the failed fetch and try again the next night.
+# Stage an OS update; when one is staged, drain the runners and reboot, so a reboot never kills a job.
 set -uo pipefail
 
 drain=/run/github-runner/draining
@@ -27,7 +26,7 @@ while ((SECONDS < deadline)); do
     busy=0
     while read -r name; do
         [[ -n "$name" ]] || continue
-        # An idle runner waits for a job and has no Runner.Worker process; stop those, wait for the busy ones.
+        # an idle runner has no Runner.Worker process
         if podman exec "$name" pgrep -f Runner.Worker >/dev/null 2>&1; then
             busy=1
         else

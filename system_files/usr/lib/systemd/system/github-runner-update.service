@@ -6,5 +6,5 @@ After=network-online.target
 [Service]
 Type=oneshot
 ExecStart=/usr/libexec/github-runner/update-and-drain
-# The drain waits for running jobs, so allow it as long as the script's own timeout (6 hours) plus margin.
+# the drain waits up to 6 hours for running jobs
 TimeoutStartSec=7h

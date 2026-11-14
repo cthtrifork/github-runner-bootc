@@ -1,10 +1,6 @@
 #!/usr/bin/bash
-# ExecStartPre of github-runner@<instance>: trade the GitHub App key for a one-hour installation token, ask GitHub for a
-# single-use JIT runner configuration and write it where the container reads it. No secret ever lives in the image.
-#
-# /etc/github-runner/ (root only, written by github-runner-seed-app):
-#   app-id, installation-id, private-key.pem
-#   config: SCOPE=repo:<owner>/<repo> or org:<org>, LABELS=a,b,c, RUNNER_GROUP_ID=1, MIN_FREE_GB=10, API_URL=https://api.github.com
+# ExecStartPre of github-runner@<instance>: trade the GitHub App key for a single-use JIT runner configuration.
+# Reads /etc/github-runner/{app-id,installation-id,private-key.pem,config}, written by github-runner-seed-app.
 set -euo pipefail
 
 inst="${1:?Usage: $0 <instance>}"

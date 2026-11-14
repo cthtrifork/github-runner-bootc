@@ -1,6 +1,6 @@
 name: Renovate
 
-# This repository's own self-hosted Renovate (pmx01-talos-gitops has its own), authenticating as a GitHub App (so PRs trigger CI). Config: renovate.json5, renovate-config.js.
+# Self-hosted Renovate, authenticating as a GitHub App so its PRs trigger CI. Config: renovate.json5, renovate-config.js.
 on:
   pull_request:
     paths:
@@ -8,7 +8,7 @@ on:
       - .github/workflows/renovate-config.js
       - .github/workflows/renovate.yaml
   schedule:
-    - cron: "37 */2 * * *" # every 2 hours, so automerges happen soon after CI is green; not at :00, where GitHub delays and drops scheduled runs the most
+    - cron: "37 */2 * * *"
   workflow_dispatch:
     inputs:
       log_level:
@@ -26,7 +26,7 @@ concurrency:
 jobs:
   dry-run:
     name: dry run
-    # A fork's token is read-only and cannot read this repository's Renovate state.
+    # a fork's token is read-only
     if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 20
@@ -39,8 +39,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # The same App as the real run, but read-only: this also checks the App's credentials and
-      # installation. The dry run itself writes nothing.
+      # read-only: also checks the App's credentials and installation
       - name: Get a GitHub App token (read-only)
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -64,14 +63,11 @@ jobs:
           LOG_LEVEL: debug
           RENOVATE_DRY_RUN: full
           RENOVATE_GHCR_TOKEN: ${{ github.token }} # ghcr.io lookups (see renovate-config.js)
-          # Only this repository.
           RENOVATE_REPOSITORIES: ${{ github.repository }}
-          # Look at the PR's branch, not main, so the PR's own changes are what gets checked.
+          # check the PR's branch, not main
           RENOVATE_BASE_BRANCHES: ${{ github.head_ref }}
           RENOVATE_ONBOARDING: 'false'
           RENOVATE_USERNAME: ${{ steps.app-token.outputs.app-slug }}[bot]
-          # A JSON report of the branches and updates, summarised below. /tmp is mounted into the
-          # Renovate container by the action.
           RENOVATE_REPORT_TYPE: file
           RENOVATE_REPORT_PATH: /tmp/renovate-report.json
 
@@ -99,8 +95,7 @@ jobs:
 
   renovate:
     name: renovate
-    # Scheduled runs are always on the default branch. A manual run from another branch would read
-    # that branch's config but update the default branch, so it is not allowed.
+    # only the default branch: another branch would read its config but update the default branch
     if: github.event_name != 'pull_request' && github.ref_name == github.event.repository.default_branch
     runs-on: ubuntu-latest
     timeout-minutes: 30
@@ -127,8 +122,6 @@ jobs:
           restore-keys: |
             renovate-cache-
 
-      # A short-lived installation token, limited to the permissions listed here and to the
-      # repository Renovate manages.
       - name: Get a GitHub App token
         id: app-token
         uses: actions/create-github-app-token@64ab729a6294000f5aa4a4bc0b73d1f32bc45510 # v3.3.0
@@ -158,5 +151,4 @@ jobs:
           RENOVATE_REPOSITORY_CACHE: 'enabled'
           RENOVATE_X_GITHUB_HOST_RULES: 'true'
           RENOVATE_ONBOARDING: 'false'
-          # An installation token cannot ask GitHub who it is, so name the bot (to recognise its own PRs).
           RENOVATE_USERNAME: ${{ steps.app-token.outputs.app-slug }}[bot]

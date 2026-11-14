@@ -10,7 +10,7 @@ permissions: {}
 jobs:
   cleanup:
     name: Clean up PR #${{ github.event.pull_request.number }}
-    # A fork's token is read-only and has no access to the packages.
+    # a fork's token is read-only
     if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-slim
     timeout-minutes: 15
@@ -26,18 +26,16 @@ jobs:
       PR_NUMBER: ${{ github.event.pull_request.number }}
       RUN_ID: ${{ github.run_id }}
     steps:
-      # A merge or close leaves the PR's own build and e2e jobs running for up to an hour. The merge starts its own push
-      # run on main, which this does not touch: only runs of the pull_request event are cancelled (not this one).
+      # only runs of the pull_request event, not the push run the merge starts on main
       - name: Cancel the runs of the PR
         run: gh run list --branch "$HEAD_REF" --event pull_request --json databaseId,status --jq ".[] | select(.status != \"completed\" and .databaseId != $RUN_ID) | .databaseId" | xargs -r -n1 gh run cancel
 
-      # delete-tags would untag with empty manifests, which GHCR rejects (HTTP 400), so whole images are deleted and every
-      # other image is protected: latest, main and main-*, and the pr-* tags of the other PRs.
+      # whole images are deleted; latest, main, main-* and the other PRs' images are protected
       - name: Delete the PR image
         uses: dataaxiom/ghcr-cleanup-action@d52806a0dc70b430571a37da1fde39733ffd640f # v1.2.2
         with:
           token: ${{ github.token }}
-          packages: github-runner-bootc
+          packages: github-runner-bootc,offline-github-runner-bootc
           use-regex: true
           keep-n-tagged: 0
           exclude-tags: ^(latest|main|main-.*|pr-(?!${{ github.event.pull_request.number }}(-|$)).*)$

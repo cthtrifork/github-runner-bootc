@@ -1,15 +1,19 @@
 [Unit]
-Description=Load the embedded runner image into the container storage
+Description=Load or pull the runner image into the container storage
 Documentation=https://github.com/cthtrifork/github-runner-bootc
-ConditionPathExists=/usr/share/github-runner/runner-image
+Wants=network-online.target
+After=network-online.target
 RequiresMountsFor=/var/lib/containers
+# the pull needs the registry: keep trying
+StartLimitIntervalSec=0
 
 [Service]
 Type=oneshot
 RemainAfterExit=yes
 ExecStart=/usr/libexec/github-runner/load-image
-# loading copies several GiB the first time
 TimeoutStartSec=30min
+Restart=on-failure
+RestartSec=30s
 
 [Install]
 WantedBy=multi-user.target

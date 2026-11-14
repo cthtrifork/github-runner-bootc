@@ -1,12 +1,8 @@
 name: Create disk image
 
-# Builds a bootable raw disk image of a published bootc image for bare metal (write it to a disk with dd or
-# `bootc install`). The runner image is embedded in the OS image, so the host runs without any registry.
-#
-# The compressed image is uploaded to Azure blob storage (secret AZURE_STORAGE_CONNECTION_STRING, variable
-# AZURE_STORAGE_CONTAINER): it is about 3.7 GiB, more than the 2 GiB a GitHub release asset can hold.
-# The `disk` label on a PR runs everything except the upload, with a throwaway key, and reports the sizes: use it to test
-# changes to this workflow.
+# Builds a bootable raw disk image of a published image, zstd compressed. A manual run uploads it to Azure blob storage
+# (secret AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER) and skips the upload while the secret is not
+# set. The `disk` PR label only builds.
 on:
   workflow_dispatch:
     inputs:
@@ -15,6 +11,11 @@ on:
         required: true
         default: latest
         type: string
+      variant:
+        description: "Which image: default pulls the runner image on the first boot, offline embeds it"
+        type: choice
+        options: [default, offline]
+        default: offline
       authorized_keys:
         description: "Public SSH key(s) for root, one per line (public keys only, never a private key)"
         required: true
@@ -38,7 +39,7 @@ concurrency:
 jobs:
   disk:
     name: Raw disk image
-    # Other labels (Renovate adds several) and forks start nothing.
+    # other labels and forks start nothing
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.label.name == 'disk' && github.event.pull_request.head.repo.fork != true) }}
     runs-on: ubuntu-latest
     timeout-minutes: 90
@@ -46,7 +47,7 @@ jobs:
       contents: read
       packages: read # pull the image
     env:
-      IMAGE_FULL: ghcr.io/${{ github.repository }}
+      IMAGE_FULL: ${{ inputs.variant == 'default' && format('ghcr.io/{0}', github.repository) || format('ghcr.io/{0}/offline-{1}', github.repository_owner, github.event.repository.name) }}
       TAG: ${{ inputs.tag || format('pr-{0}', github.event.pull_request.number) }}
       DISK_SIZE: ${{ inputs.disk_size || '80G' }}
       AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
@@ -55,7 +56,6 @@ jobs:
         with:
           persist-credentials: false
 
-      # a throwaway key on a PR (the disk is only measured), the given public keys otherwise
       - name: Authorized keys
         env:
           AUTHORIZED_KEYS: ${{ inputs.authorized_keys }}
@@ -64,7 +64,6 @@ jobs:
           [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ && "$DISK_SIZE" =~ ^[0-9]+G$ ]] || { echo "::error::bad tag or disk_size"; exit 1; }
           if [ -n "$AUTHORIZED_KEYS" ]; then
             printf '%s\n' "$AUTHORIZED_KEYS" > authorized_keys
-            # public keys only: ssh-keygen -l fails on a private key or on garbage
             ssh-keygen -l -f authorized_keys >/dev/null
             ! grep -q 'PRIVATE KEY' authorized_keys
           else
@@ -96,9 +95,8 @@ jobs:
           | compressed (zstd -3) | $((bytes / 1048576)) MiB |
           " >> "$GITHUB_STEP_SUMMARY"
 
-      # az is preinstalled on the hosted runner; it uploads large files in blocks
       - name: Upload to Azure blob storage
-        if: ${{ github.event_name == 'workflow_dispatch' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && env.AZURE_STORAGE_CONNECTION_STRING != '' }}
         run: | #sh
           set -euo pipefail
           name="github-runner-${TAG}-$(date -u +%Y%m%d).raw.zst"
@@ -106,3 +104,7 @@ jobs:
           echo "Uploaded blob \`$name\` to container \`$AZURE_STORAGE_CONTAINER\`" >> "$GITHUB_STEP_SUMMARY"
         env:
           AZURE_STORAGE_CONTAINER: ${{ vars.AZURE_STORAGE_CONTAINER }}
+
+      - name: Upload skipped
+        if: ${{ github.event_name == 'workflow_dispatch' && env.AZURE_STORAGE_CONNECTION_STRING == '' }}
+        run: echo "::notice::AZURE_STORAGE_CONNECTION_STRING is not set, the disk image was built but not uploaded"

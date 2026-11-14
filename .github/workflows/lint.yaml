@@ -1,13 +1,6 @@
 name: Lint
 on:
-  pull_request:
-    paths:
-      - ".github/**"
-      - "**/*.sh"
-      - "*.containerfile"
-      - "build_files/**"
-      - "tests/**"
-      - "system_files/**"
+  pull_request: # always, the jobs are required checks and take seconds
   push:
     branches:
       - main
@@ -55,8 +48,6 @@ jobs:
 
       - name: Run actionlint
         run: | #sh
-          # shellcheck is covered by its own job; artifact-metadata is a newer scope than actionlint knows;
-          # 'if: false' is used deliberately to disable the image cleanup step
           "$HOME/.local/bin/actionlint" -color -shellcheck= -ignore 'unknown permission scope "artifact-metadata"' -ignore 'of "override_image" input is not included in its options' -ignore 'constant expression "false" in condition'
 
   shellcheck:
@@ -70,7 +61,6 @@ jobs:
 
       - name: Run shellcheck (errors only)
         run: | #sh
-          # only scripts with a bash/sh shebang (skips sourced profile.d snippets and vendored zsh code)
           mapfile -t files < <(git ls-files '*.sh' 'system_files/usr/libexec/*' 'system_files/usr/bin/*' | while read -r f; do head -n1 "$f" | grep -qE '^#!.*(ba)?sh' && echo "$f"; done)
           [ "${#files[@]}" -gt 0 ] || { echo "No shell scripts yet"; exit 0; }
           shellcheck --severity=error "${files[@]}"
@@ -114,7 +104,6 @@ jobs:
         run: | #sh
           git ls-files '*.containerfile' | xargs -r "$HOME/.local/bin/hadolint" --failure-threshold error --ignore DL3020
 
-  # zizmor audits workflows for security problems (pedantic persona, all workflows).
   zizmor:
     name: zizmor
     runs-on: ubuntu-slim
@@ -124,7 +113,7 @@ jobs:
         with:
           persist-credentials: false
 
-      # Pedantic persona. The token lets zizmor run its online audits (impostor commits, known-vulnerable actions).
+      # the token lets zizmor run its online audits
       - name: Run zizmor
         env:
           GH_TOKEN: ${{ github.token }}
