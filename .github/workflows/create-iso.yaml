@@ -61,6 +61,9 @@ jobs:
       - name: Registry credentials for the root podman
         run: sudo install -D -m 600 "$RUNNER_TEMP/auth.json" /root/.config/containers/auth.json
 
+      - name: Debug what the builder sees
+        run: sudo podman run --rm "$IMAGE_FULL:$TAG" sh -c 'cat /usr/lib/os-release; ls -la /etc/yum.repos.d; grep -H -E "^(enabled|\[)" /etc/yum.repos.d/*.repo | head -30'
+
       - name: Build the ISO
         id: bib
         uses: ublue-os/bootc-image-builder-action@b98784c42327746e107a6a753b64f44823bdbf2f # main (the action has no tags) # zizmor: ignore[stale-action-refs]
