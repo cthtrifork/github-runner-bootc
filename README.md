@@ -13,6 +13,16 @@ The total is the same: the offline image only moves the runner image from the fi
 compressed registry sizes of the latest release; the installed system and the jobs' images and builds need much more disk,
 so plan for tens of GiB.
 
+### Disk space
+
+| | Installed (measured) | During an update | Plan for |
+|---|---|---|---|
+| Default | 11 GiB: OS 2, runner image 8 | 13 GiB: the staged image doubles the OS | 60 GiB |
+| Offline | 14 GiB: OS 5, runner image 8 | 19 GiB: the staged image doubles the OS | 60 GiB |
+
+A new runner image version briefly needs another 8 GiB while it replaces the old one. The jobs' own images and builds
+need space too (an estimate: 20 GiB per runner instance, `--instances`), so add that to the 60 GiB.
+
 Both are published with every build of `main` and the weekly rebuild: see the [releases](https://github.com/cthtrifork/github-runner-bootc/releases)
 for the tags and the changes, and the [architecture](docs/architecture.md) for how it fits together.
 
