@@ -54,6 +54,7 @@ jobs:
       packages: write # push the image to ghcr.io
       id-token: write # sign the provenance attestation (OIDC)
       attestations: write # store the provenance attestation
+      security-events: write # upload the Trivy SARIF to code scanning
     outputs:
       tag: ${{ env.TAG }}
       tier: ${{ env.TIER }}
@@ -106,6 +107,8 @@ jobs:
         with:
           image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
           scanners: vuln
+          format: sarif
+          output: trivy.sarif
           ignore-unfixed: true
           severity: CRITICAL,HIGH
           exit-code: "0"
@@ -113,6 +116,25 @@ jobs:
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ github.token }}
+
+      - name: Upload Trivy results to code scanning
+        if: ${{ !cancelled() && env.PUSH == 'true' && github.event.pull_request.head.repo.fork != true && hashFiles('trivy.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-image
+
+      # Pending Fedora security advisories for the pushed image (the built PR image, or the latest image on main).
+      - name: Pending security updates (dnf updateinfo)
+        if: ${{ env.PUSH == 'true' }}
+        run: | #sh
+          {
+            printf '### Pending security updates in `%s@%s`\n\n```\n' "$IMAGE" "$DIGEST"
+            docker run --rm --entrypoint dnf "$IMAGE@$DIGEST" -q updateinfo list --security --refresh
+            printf '```\n'
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
 
       - name: Attest build provenance
         if: ${{ env.PUSH == 'true' && github.event_name != 'pull_request' }}
