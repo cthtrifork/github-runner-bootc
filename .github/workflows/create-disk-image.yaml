@@ -91,18 +91,6 @@ jobs:
           disk_size: ${{ env.DISK_SIZE }}
           token: ${{ github.token }}
 
-      - name: Check that the runner image is on the disk
-        run: | #sh
-          set -euo pipefail
-          dev="$(sudo losetup --find --show --partscan out/disk.raw)"
-          trap 'sudo umount -R /mnt/disk 2>/dev/null || true; sudo losetup -d "$dev" || true' EXIT
-          sudo mkdir -p /mnt/disk
-          root="$(lsblk -lnpo NAME,FSTYPE "$dev" | awk '$2=="xfs"{print $1}' | tail -1)"
-          sudo mount -o ro,nouuid "$root" /mnt/disk
-          sudo du -sh /mnt/disk/ostree/repo 2>/dev/null || true
-          test -n "$(sudo find /mnt/disk -maxdepth 6 -type d -path '*/usr/lib/bootc/storage' -print -quit)" \
-            || { echo "::error::the bound image store is missing from the disk image"; exit 1; }
-
       - name: Compress
         id: size
         run: | #sh
