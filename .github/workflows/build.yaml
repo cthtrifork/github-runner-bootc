@@ -96,8 +96,10 @@ jobs:
     permissions:
       contents: read
       packages: write # push the image to ghcr.io
-      id-token: write # provenance attestation
-      attestations: write # provenance attestation
+      id-token: write # sign the provenance attestation (OIDC)
+      attestations: write # store the provenance attestation
+      security-events: write # upload the Trivy SARIF to code scanning
+      pull-requests: write # sticky Trivy summary comment
     outputs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ env.TAG }}
@@ -144,20 +146,182 @@ jobs:
           cache-from: type=gha,scope=${{ matrix.variant }}
           cache-to: type=gha,mode=max,scope=${{ matrix.variant }}
 
-      # report only: the weekly rebuild picks fixes up
+      # All CRITICAL/HIGH vulnerabilities, including ones with no fix yet (dnf updateinfo only lists fixed advisories);
+      # report only (the weekly rebuild picks fixes up), so a new CVE in a base package does not turn every PR red.
       - name: Trivy scan
         if: ${{ env.PUSH == 'true' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
         with:
           image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
           scanners: vuln
-          ignore-unfixed: true
+          format: json
+          output: trivy.json
           severity: CRITICAL,HIGH
           exit-code: "0"
           timeout: 15m
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ github.token }}
+
+      # One scan, rendered twice: SARIF for code scanning, the JSON for the PR comment.
+      - name: Convert Trivy results to SARIF
+        if: ${{ env.PUSH == 'true' }}
+        run: trivy convert --format sarif --output trivy.sarif trivy.json
+
+      - name: Upload Trivy results to code scanning
+        if: ${{ !cancelled() && env.PUSH == 'true' && github.event.pull_request.head.repo.fork != true && hashFiles('trivy.sarif') != '' }}
+        uses: github/codeql-action/upload-sarif@33d7b85da1a04171e211befe2c739303b9a4c066 # v4.39.3
+        with:
+          sarif_file: trivy.sarif
+          category: trivy-${{ matrix.variant }}
+
+      # Pending Fedora security advisories for each pushed image (Trivy has no Fedora OS advisories).
+      - name: Pending security updates (dnf updateinfo)
+        if: ${{ env.PUSH == 'true' }}
+        run: | #sh
+          # shellcheck disable=SC2016 # the backticks are markdown
+          if docker run --rm --entrypoint dnf "$IMAGE@$DIGEST" -q updateinfo list --security --refresh \
+            > dnf-security.txt 2> dnf-security.err; then
+            {
+              printf '### Pending security updates in `%s@%s`\n\n```\n' "$IMAGE" "$DIGEST"
+              cat dnf-security.txt
+              printf '```\n'
+            } >> "$GITHUB_STEP_SUMMARY"
+          else
+            cat dnf-security.err
+            echo failed > dnf-security.failed
+          fi
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+
+      - name: Write Trivy comment
+        if: ${{ github.event_name == 'pull_request' && env.PUSH == 'true' }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          VARIANT: ${{ matrix.variant }}
+        run: | #sh
+          crit=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="CRITICAL")] | length' trivy.json)
+          high=$(jq '[.Results[]?.Vulnerabilities[]? | select(.Severity=="HIGH")] | length' trivy.json)
+          os_scanned=$(jq '[.Results[]? | select(.Class=="os-pkgs")] | length' trivy.json)
+          {
+            echo "### 🛡️ Trivy summary for ${VARIANT}"
+            echo ""
+            echo "\`${IMAGE}@${DIGEST}\`"
+            echo ""
+            echo "| Severity | Count |"
+            echo "| --- | --- |"
+            echo "| 🔴 CRITICAL | ${crit} |"
+            echo "| 🟠 HIGH | ${high} |"
+            echo ""
+            if [[ "$os_scanned" -eq 0 ]]; then
+              echo "⚠️ **OS packages were NOT scanned:** Trivy has no advisories for Fedora, so only library/language findings are counted."
+              echo ""
+            fi
+            echo "#### Fedora security updates (dnf updateinfo)"
+            if [[ -f dnf-security.failed ]]; then
+              echo "⚠️ \`dnf updateinfo\` failed; see the job log."
+            else
+              adv=$(grep -c . dnf-security.txt || true)
+              echo "**${adv}** pending security advisories in the image's packages."
+              if [[ "$adv" -gt 0 ]]; then
+                echo ""
+                echo "<details><summary>Advisories</summary>"
+                echo ""
+                echo '```'
+                head -n 50 dnf-security.txt
+                echo '```'
+                echo "</details>"
+              fi
+            fi
+            echo ""
+            echo "[Full run](${RUN_URL})"
+          } > trivy-comment.md
+
+      - name: Sticky PR comment (Trivy summary)
+        if: ${{ github.event_name == 'pull_request' && env.PUSH == 'true' }}
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          path: trivy-comment.md
+          header: "🛡️ Trivy summary for ${{ matrix.variant }}"
+
+      # Compare the PR image with the published :latest (size, layers, new/fixed CRITICAL/HIGH).
+      - name: Write image diff comment
+        id: diff
+        if: ${{ github.event_name == 'pull_request' && env.PUSH == 'true' }}
+        env:
+          DIGEST: ${{ steps.build.outputs.digest }}
+          VARIANT: ${{ matrix.variant }}
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+        run: | #sh
+          set -euo pipefail
+          if ! docker pull -q "$IMAGE:latest" > /dev/null 2>&1; then
+            echo "No $IMAGE:latest yet, skipping the baseline comparison"
+            echo "exists=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          echo "exists=true" >> "$GITHUB_OUTPUT"
+          docker pull -q "$IMAGE@$DIGEST" > /dev/null
+          trivy image --scanners vuln --severity CRITICAL,HIGH --timeout 15m --format json \
+            --output latest_trivy.json "$IMAGE:latest"
+
+          base=$(docker image inspect "$IMAGE:latest" | jq '.[0]')
+          pr=$(docker image inspect "$IMAGE@$DIGEST" | jq '.[0]')
+          base_size=$(jq -r '.Size // 0' <<<"$base")
+          pr_size=$(jq -r '.Size // 0' <<<"$pr")
+          delta=$(( pr_size - base_size ))
+          delta_h=$(numfmt --to=iec --suffix=B "${delta#-}")
+          if   [[ $delta -gt 0 ]]; then trend="+${delta_h}"
+          elif [[ $delta -lt 0 ]]; then trend="-${delta_h}"
+          else trend="±0"; fi
+          ids='[.Results[]?.Vulnerabilities[]? | .VulnerabilityID] | unique[]?'
+          new=$(comm -13 <(jq -r "$ids" latest_trivy.json | sort) <(jq -r "$ids" trivy.json | sort))
+          fixed=$(comm -23 <(jq -r "$ids" latest_trivy.json | sort) <(jq -r "$ids" trivy.json | sort))
+          new_n=$(printf '%s\n' "$new" | grep -c . || true)
+          fixed_n=$(printf '%s\n' "$fixed" | grep -c . || true)
+          new_top=$(printf '%s\n' "$new" | head -n 5 | paste -sd, -)
+          [[ -z "$new_top" ]] && new_top="_none_"
+
+          {
+            echo "### 🧾 Image diff for ${VARIANT}"
+            echo ""
+            echo "**Base:** \`$IMAGE:latest\`"
+            echo "**PR:** \`$IMAGE@$DIGEST\`"
+            echo ""
+            echo "- Created: $(jq -r '.Created // "n/a"' <<<"$base") → $(jq -r '.Created // "n/a"' <<<"$pr")"
+            echo "- Size: $(numfmt --to=iec --suffix=B "$base_size") → $(numfmt --to=iec --suffix=B "$pr_size") (**${trend}**)"
+            echo "- Layers: $(jq -r '.RootFS.Layers | length' <<<"$base") → $(jq -r '.RootFS.Layers | length' <<<"$pr")"
+            echo "- Trivy HIGH/CRIT: +${new_n} / -${fixed_n} (new: ${new_top})"
+          } > image-diff.md
+
+      - name: Sticky PR comment (image diff)
+        if: ${{ steps.diff.outputs.exists == 'true' }}
+        uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
+        with:
+          path: image-diff.md
+          header: "🧾 Image diff for ${{ matrix.variant }}"
+
+      - name: Generate SBOM
+        if: ${{ env.PUSH == 'true' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}@${{ steps.build.outputs.digest }}
+          format: spdx-json
+          output: sbom.spdx.json
+          skip-setup-trivy: true
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+
+      - name: Attest SBOM
+        if: ${{ env.PUSH == 'true' && github.event_name != 'pull_request' }}
+        uses: actions/attest@1e69f48acb82d1966a394da916b4c1698aa569d6 # v4.2.2
+        with:
+          subject-name: ${{ env.IMAGE }}
+          subject-digest: ${{ steps.build.outputs.digest }}
+          sbom-path: sbom.spdx.json
+          push-to-registry: true
 
       - name: Attest build provenance
         if: ${{ env.PUSH == 'true' && github.event_name != 'pull_request' }}
