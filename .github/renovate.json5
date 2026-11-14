@@ -12,13 +12,18 @@
   dependencyDashboardLabels: [
     'dependencies',
   ],
+  // New releases wait 2 days before a branch or PR exists.
   minimumReleaseAge: '2 days',
+  // quay.io and ghcr.io images have no release timestamp: count them as old enough.
   minimumReleaseAgeBehaviour: 'timestamp-optional',
   internalChecksFilter: 'strict',
+  // commits go through GitHub's API as the App, so they are verified
   platformCommit: 'enabled',
   osvVulnerabilityAlerts: true,
+
   prHourlyLimit: 5,
   prConcurrentLimit: 10,
+  // no `schedule`: the cron in renovate.yaml is the only timing
   vulnerabilityAlerts: {
     addLabels: [
       'vulnerability',
@@ -34,10 +39,12 @@
   patch: {
     automerge: true,
   },
+  // Renovate merges the PR itself once the checks pass
   automergeType: 'pr',
   platformAutomerge: false,
   ignoreTests: false,
   rebaseWhen: 'auto',
+  // a later rule wins
   packageRules: [
     {
       matchUpdateTypes: [
@@ -48,6 +55,7 @@
       automerge: true,
     },
     {
+      // The runner image tag is in github-runner.containerfile and in the Quadlet unit; bump both in one PR.
       matchPackageNames: [
         'ghcr.io/cthtrifork/talos-gitops/github-actions-runner',
       ],
@@ -55,12 +63,14 @@
       groupName: 'runner image',
     },
     {
+      // the Fedora base image: updates wait for approval on the Dependency Dashboard
       matchPackageNames: [
         'quay.io/fedora/fedora-bootc',
       ],
       dependencyDashboardApproval: true,
     },
     {
+      // patches stay out of the groups so a minor does not hold them back
       matchManagers: [
         'github-actions',
       ],
@@ -88,6 +98,7 @@
       recreateWhen: 'always',
     },
     {
+      // Renovate itself automerges every update type
       matchPackageNames: [
         'renovate',
         'renovatebot/github-action',
@@ -98,6 +109,7 @@
   ],
   customManagers: [
     {
+      // container images outside a Dockerfile
       customType: 'regex',
       managerFilePatterns: [
         '/^\\.github/workflows/[^/]+\\.ya?ml$/',
@@ -109,6 +121,7 @@
       datasourceTemplate: 'docker',
     },
     {
+      // the runner image in the Quadlet unit: Renovate bumps it together with the containerfile (packageRules, 'runner image')
       customType: 'regex',
       managerFilePatterns: [
         '/^system_files/.+/github-runner@\\.container$/',
@@ -119,6 +132,7 @@
       datasourceTemplate: 'docker',
     },
     {
+      // versions marked with a `# renovate: datasource=<ds> depName=<name>` comment
       customType: 'regex',
       managerFilePatterns: [
         '/^[^/]+\\.containerfile$/',
