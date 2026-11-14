@@ -1,6 +1,6 @@
 #!/usr/bin/bash
 # Store the GitHub App credentials the runners register with, then start the runner instances.
-#   sudo github-runner-seed-app --scope repo:owner/name|org:name --app-id N --installation-id N [--instances 1] \
+#   sudo github-runner-seed-app --scope repo:owner/name|org:name --app-id <client id or app id> --installation-id N [--instances 1] \
 #        [--labels a,b,c] [--runner-group-id 1] [--api-url https://github.example/api/v3] [private-key.pem]
 # The key is read from a file or stdin, never from an argument, so it stays out of shell history and `ps`.
 set -euo pipefail
@@ -23,7 +23,8 @@ while (($#)); do
 done
 
 [[ "$scope" =~ ^(repo:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+|org:[A-Za-z0-9_.-]+)$ ]] || { echo "--scope must be repo:<owner>/<repo> or org:<org>" >&2; exit 1; }
-[[ "$app_id" =~ ^[0-9]+$ ]] || { echo "--app-id must be a number" >&2; exit 1; }
+# GitHub accepts the Client ID (Iv...) as the JWT issuer, like the numeric App ID
+[[ "$app_id" =~ ^([0-9]+|Iv[0-9A-Za-z]+)$ ]] || { echo "--app-id must be the Client ID (Iv...) or the numeric App ID" >&2; exit 1; }
 [[ "$installation_id" =~ ^[0-9]+$ ]] || { echo "--installation-id must be a number" >&2; exit 1; }
 [[ "$instances" =~ ^[1-9][0-9]*$ ]] || { echo "--instances must be a positive number" >&2; exit 1; }
 [[ "$group" =~ ^[0-9]+$ ]] || { echo "--runner-group-id must be a number" >&2; exit 1; }

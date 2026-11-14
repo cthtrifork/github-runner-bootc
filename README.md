@@ -30,7 +30,7 @@ See [docs/architecture.md](docs/architecture.md) for the architecture and flow d
 1. Get a disk image: run the **Create disk image** workflow (raw image with the bound runner image, zstd compressed, uploaded to
    Azure blob storage: it is about 3.7 GiB, too big for a release asset), or `bootc install to-disk` from a host that has the image and the runner image in
    its container storage. An Anaconda ISO would not carry the bound image.
-2. Boot it, then seed the GitHub App: `sudo github-runner-seed-app --scope repo:owner/name --app-id N
+2. Boot it, then seed the GitHub App: `sudo github-runner-seed-app --scope repo:owner/name --app-id <Client ID>
    --installation-id N [--instances 2] key.pem` (org scope: `--scope org:name`).
 3. Airgapped sites: point `/etc/containers/registries.conf.d/` at an internal mirror (OS image and runner image),
    `chrony` at an internal NTP server, and add a drop-in `/etc/containers/systemd/github-runner@.container.d/10-site.conf`
@@ -68,12 +68,14 @@ the `PR title` workflow. Every change needs review from the code owner.
 
 The Renovate GitHub App must be installed on this repository.
 
-For the `e2e-live` label, create a second GitHub App for tests (repository permission *Administration: read and
-write*, installed on this repository only) and set:
+The same GitHub App (`cthtrifork-runner-bootc`, repository permission *Administration: read and write*) serves the
+hosts and the `e2e-live` test. For the test, set:
 
 | Kind | Name |
 |---|---|
-| Variable | `E2E_APP_CLIENT_ID`, `E2E_APP_ID`, `E2E_INSTALLATION_ID` |
-| Secret | `E2E_APP_PRIVATE_KEY` |
+| Variable | `RUNNER_APP_CLIENT_ID`, `RUNNER_INSTALLATION_ID` |
+| Secret | `RUNNER_APP_PRIVATE_KEY` |
+
+The test uses a token limited to this repository, whatever else the App is installed on.
 
 Create the labels `e2e`, `e2e-live`, `push` and `disk` (`disk` dry-runs the disk image build on a PR, without the upload).
