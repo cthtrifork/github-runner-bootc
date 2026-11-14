@@ -1,0 +1,3 @@
+# Every change needs review from the owner. The require-pr-main ruleset sets "Require review from Code Owners", so a PR
+# cannot merge without an approval from this account, and a GitHub App cannot give one.
+* @cthtrifork
