@@ -1,7 +1,8 @@
 name: Create ISO
 
 # Builds an installer ISO of a published image with bootc-image-builder and uploads it to Azure blob storage (secret
-# AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER). The `iso` PR label builds without uploading.
+# AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER). The `iso` PR label builds without uploading; the
+# PR image must exist already (labels `push` or `e2e` publish it).
 on:
   workflow_dispatch:
     inputs:
