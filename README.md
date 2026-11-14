@@ -62,7 +62,6 @@ the `PR title` workflow. Every change needs review from the code owner.
 |---|---|---|
 | Variable | `RENOVATE_APP_CLIENT_ID` | `renovate.yaml` |
 | Secret | `RENOVATE_APP_PRIVATE_KEY` | `renovate.yaml` |
-| Secret | `PAT_RENOVATEBOT` | `renovate.yaml` (ghcr.io lookups) |
 | Secret | `AZURE_STORAGE_CONNECTION_STRING` | `create-disk-image.yaml` |
 | Variable | `AZURE_STORAGE_CONTAINER` | `create-disk-image.yaml` |
 
