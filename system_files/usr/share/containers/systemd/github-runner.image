@@ -1,8 +1,0 @@
-# The runner image, logically bound to this OS image: bootc pulls it into /usr/lib/bootc/storage on install, switch and
-# upgrade (see /usr/lib/bootc/bound-images.d), so the host never needs a registry at boot. bootc reads only the Image=
-# line. Keep it identical to the Image= line of github-runner@.container (tests/check-image-refs.sh enforces that).
-# A version tag, not a digest: bootc copies the image from containers-storage, and a digest of the multi-arch index never
-# matches the manifest stored locally ("Digest of source image's manifest would not match destination reference").
-# Same image as the talos-gitops ARC scale sets (images/github-actions-runner/Dockerfile).
-[Image]
-Image=ghcr.io/cthtrifork/talos-gitops/github-actions-runner:v0.11.0

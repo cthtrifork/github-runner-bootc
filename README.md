@@ -17,7 +17,7 @@ flowchart LR
 
 1. **Disk image:** run the *Create disk image* workflow (a raw image, zstd compressed, uploaded to Azure blob
    storage), and write it to the disk with `dd`. On a host that already runs bootc, `bootc switch` to the image
-   `ghcr.io/cthtrifork/github-runner-bootc`. An Anaconda ISO is not supported: bootc cannot bind images with it.
+   `ghcr.io/cthtrifork/github-runner-bootc`. The runner image is embedded in the OS image, so every installer carries it (an ISO is planned, see #20).
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
    ```

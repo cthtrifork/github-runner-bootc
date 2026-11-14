@@ -1,6 +1,6 @@
 name: Clean up old images
 
-# Prunes the ghcr.io package of the OS image (the logically bound runner image lives in another repository's package).
+# Prunes the ghcr.io package of the OS image (the embedded runner image is pulled from another repository's package at build time).
 # The workflow token owns the package: the image is pushed by this repository's own workflows.
 on:
   schedule:

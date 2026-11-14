@@ -14,7 +14,7 @@ seed)
     ;;
 wait)
     # The `live job` of this run executes on the runner the VM registered; wait for it to finish.
-    for _ in $(seq 1 120); do
+    for _ in $(seq 1 40); do
         state="$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${RUN_ID}/jobs" --jq '[.jobs[] | select(.name=="live job") | .conclusion] | first // ""')"
         [ -n "$state" ] && break
         sleep 15

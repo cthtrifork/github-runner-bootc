@@ -84,7 +84,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: The bound image and the unit run the same digest
+      - name: The embedded image and the unit use the same tag
         run: tests/check-image-refs.sh
 
   hadolint:

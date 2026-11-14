@@ -9,16 +9,16 @@ sequenceDiagram
 
     D->>CI: PR (labels e2e, e2e-live, disk, push)
     CI->>R: build and push OS image
-    CI->>CI: QEMU boot, no network: bound image must work offline
+    CI->>CI: QEMU boot, no network: embedded runner image must work offline
     CI->>CI: e2e-live: VM registers a runner, live job runs on it
     CI-->>D: raw disk (Azure blob)
 
-    Note over H: Install once: dd the disk, or bootc install.<br/>The runner image is bound, so it is already on the disk.
+    Note over H: Install once: dd the disk, or bootc install.<br/>The runner image is embedded, so it is already on the disk.
     D->>H: github-runner-seed-app (GitHub App key)
 
     loop for every job
         S->>G: installation token, then generate-jitconfig (single use)
-        S->>S: start container from the bound image (Pull=never)
+        S->>S: start container from the local image (Pull=never)
         S->>G: runner connects, waits for a job
         G-->>S: job
         S->>G: logs and result

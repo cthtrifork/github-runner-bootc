@@ -1,0 +1,15 @@
+[Unit]
+Description=Load the embedded runner image into the container storage
+Documentation=https://github.com/cthtrifork/github-runner-bootc
+ConditionPathExists=/usr/share/github-runner/runner-image
+RequiresMountsFor=/var/lib/containers
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/libexec/github-runner/load-image
+# loading copies several GiB the first time
+TimeoutStartSec=30min
+
+[Install]
+WantedBy=multi-user.target
