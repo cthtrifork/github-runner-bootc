@@ -95,7 +95,6 @@
         '/^\\.github/actions/[^/]+/action\\.ya?ml$/',
       ],
       matchStrings: [
-        '(?<depName>ghcr\\.io/hhd-dev/rechunk):(?<currentValue>v?\\d[\\w.-]*)',
         '(?<depName>quay\\.io/coreos/chunkah):(?<currentValue>v?\\d[\\w.-]*)',
       ],
       datasourceTemplate: 'docker',
