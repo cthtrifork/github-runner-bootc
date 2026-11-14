@@ -32,7 +32,8 @@ jobs:
     name: ISO
     # other labels and forks start nothing
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.label.name == 'iso' && github.event.pull_request.head.repo.fork != true) }}
-    runs-on: ubuntu-latest
+    # pinned: ubuntu-latest (26.04) breaks osbuild's /dev mount
+    runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
       contents: read
@@ -62,7 +63,7 @@ jobs:
         run: sudo install -D -m 600 "$RUNNER_TEMP/auth.json" /root/.config/containers/auth.json
 
       - name: Debug what the builder sees
-        run: sudo podman run --rm "$IMAGE_FULL:$TAG" sh -c 'cat /usr/lib/os-release; ls -la /etc/yum.repos.d; grep -H -E "^(enabled|\[)" /etc/yum.repos.d/*.repo | head -30'
+        run: sudo podman run --rm "$IMAGE_FULL:$TAG" sh -c 'ls -la /etc/yum.repos.d /usr/share/dnf5/repos.d /usr/lib/yum.repos.d 2>&1; ls /etc/dnf /usr/share/dnf5 2>&1; rpm -q fedora-repos fedora-repos-ostree 2>&1'
 
       - name: Build the ISO
         id: bib
