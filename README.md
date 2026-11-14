@@ -23,6 +23,8 @@ ephemeral self-hosted GitHub Actions runner. Sister project of
   `/usr/lib/bootc/storage`, and the unit uses `Pull=never`, so the host needs no registry to run.
 - `github-runner-update.timer` stages OS updates at night and reboots only after the runners are idle.
 
+See [docs/architecture.md](docs/architecture.md) for the architecture and flow diagrams.
+
 ### Use it
 
 1. Get a disk image: run the **Create disk image** workflow (raw image with the bound runner image, attached to a

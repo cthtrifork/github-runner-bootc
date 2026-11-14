@@ -1,12 +1,17 @@
 name: Create disk image
 
-# Builds a bootable raw disk image of the published bootc image for bare metal (write it to a disk with dd or
+# Builds a bootable raw disk image of a published bootc image for bare metal (write it to a disk with dd or
 # `bootc install`), including the logically bound runner image, so the host can run without any registry.
 # An Anaconda ISO is deliberately not offered: bootc does not support logically bound images with Anaconda, so an ISO
 # would boot without the runner image.
 #
-# GitHub release assets are limited to 2 GiB per file, so the compressed image is split in parts of 1900 MiB;
-# join them with `cat disk.raw.zst.part-* | zstd -d > disk.raw`.
+# Where the compressed image goes (`destination`):
+#   auto      a GitHub release when it fits one asset (2 GiB limit per file), Azure blob storage when it is larger
+#   release   a GitHub release, split into parts of 1900 MiB when needed (join: cat disk.raw.zst.part-* | zstd -d > disk.raw)
+#   azure     the blob container configured below
+#   artifact  a workflow artifact (14 days)
+# The `disk` label on a PR runs the whole thing for that PR's image with a throwaway key and the artifact destination,
+# and reports the sizes: use it to test changes to this workflow.
 on:
   workflow_dispatch:
     inputs:
@@ -24,22 +29,28 @@ on:
         required: false
         default: 80G
         type: string
-      release:
-        description: "Attach the parts to a GitHub release (otherwise: workflow artifact only)"
+      destination:
+        description: "Where to put the compressed image"
         required: false
-        default: true
-        type: boolean
+        default: auto
+        type: choice
+        options: [auto, release, azure, artifact]
+  pull_request:
+    types: [labeled]
+    branches: [main]
 
 permissions:
   contents: read
 
 concurrency:
-  group: create-disk-image
+  group: create-disk-image-${{ github.ref }}
   cancel-in-progress: false
 
 jobs:
   disk:
     name: Raw disk image
+    # Other labels (Renovate adds several) and forks start nothing.
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.label.name == 'disk' && github.event.pull_request.head.repo.fork != true) }}
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
@@ -47,23 +58,30 @@ jobs:
       packages: read # pull the image
     env:
       IMAGE_FULL: ghcr.io/${{ github.repository }}
-      TAG: ${{ inputs.tag }}
-      DISK_SIZE: ${{ inputs.disk_size }}
-      AUTHORIZED_KEYS: ${{ inputs.authorized_keys }}
+      TAG: ${{ inputs.tag || format('pr-{0}', github.event.pull_request.number) }}
+      DISK_SIZE: ${{ inputs.disk_size || '80G' }}
+      DESTINATION: ${{ inputs.destination || 'artifact' }}
+      AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
 
-      - name: Validate the inputs
+      # a throwaway key on a PR (the disk is only measured), the given public keys otherwise
+      - name: Authorized keys
+        env:
+          AUTHORIZED_KEYS: ${{ inputs.authorized_keys }}
         run: | #sh
           set -euo pipefail
-          [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "::error::bad tag"; exit 1; }
-          [[ "$DISK_SIZE" =~ ^[0-9]+G$ ]] || { echo "::error::disk_size must look like 80G"; exit 1; }
-          printf '%s\n' "$AUTHORIZED_KEYS" > authorized_keys
-          # public keys only: ssh-keygen -l fails on a private key or on garbage
-          ssh-keygen -l -f authorized_keys >/dev/null || { echo "::error::authorized_keys must hold only public keys"; exit 1; }
-          if grep -q 'PRIVATE KEY' authorized_keys; then echo "::error::that is a private key"; exit 1; fi
+          [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ && "$DISK_SIZE" =~ ^[0-9]+G$ ]] || { echo "::error::bad tag or disk_size"; exit 1; }
+          if [ -n "$AUTHORIZED_KEYS" ]; then
+            printf '%s\n' "$AUTHORIZED_KEYS" > authorized_keys
+            # public keys only: ssh-keygen -l fails on a private key or on garbage
+            ssh-keygen -l -f authorized_keys >/dev/null
+            ! grep -q 'PRIVATE KEY' authorized_keys
+          else
+            ssh-keygen -q -t ed25519 -N "" -f "$RUNNER_TEMP/throwaway" && cp "$RUNNER_TEMP/throwaway.pub" authorized_keys
+          fi
 
       - name: Install to a raw disk
         uses: ./.github/actions/install-disk
@@ -81,38 +99,63 @@ jobs:
           sudo mkdir -p /mnt/disk
           root="$(lsblk -lnpo NAME,FSTYPE "$dev" | awk '$2=="xfs"{print $1}' | tail -1)"
           sudo mount -o ro,nouuid "$root" /mnt/disk
-          sudo find /mnt/disk/ostree/deploy -maxdepth 4 -path '*usr/lib/bootc/storage*' -prune -print | head -3
           sudo du -sh /mnt/disk/ostree/repo 2>/dev/null || true
           test -n "$(sudo find /mnt/disk -maxdepth 6 -type d -path '*/usr/lib/bootc/storage' -print -quit)" \
             || { echo "::error::the bound image store is missing from the disk image"; exit 1; }
 
-      - name: Compress and split
+      - name: Compress
+        id: size
         run: | #sh
           set -euo pipefail
           cd out
-          zstd -T0 -3 --sparse -o disk.raw.zst disk.raw
+          raw="$(stat -c %s disk.raw)"
+          zstd -T0 -3 --sparse -q -o disk.raw.zst disk.raw
           rm -f disk.raw
-          split -b 1900M -d disk.raw.zst disk.raw.zst.part-
-          rm -f disk.raw.zst
-          sha256sum disk.raw.zst.part-* > SHA256SUMS
-          ls -lh
+          bytes="$(stat -c %s disk.raw.zst)"
+          echo "bytes=$bytes" >> "$GITHUB_OUTPUT"
+          echo "### Disk image size
+          | | size |
+          |---|---|
+          | raw (sparse, apparent) | $((raw / 1048576)) MiB |
+          | compressed (zstd -3) | $((bytes / 1048576)) MiB |
+          | fits one release asset (< 2 GiB) | $([ "$bytes" -lt 2147483648 ] && echo yes || echo no) |" >> "$GITHUB_STEP_SUMMARY"
+          if [ "$DESTINATION" = auto ]; then
+            if [ "$bytes" -lt 2000000000 ]; then dest=release; else dest=azure; fi
+            echo "DESTINATION=$dest" >> "$GITHUB_ENV"
+            echo "auto: $dest" >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Split for a release
+        if: ${{ env.DESTINATION == 'release' || env.DESTINATION == 'artifact' }}
+        run: cd out && split -b 1900M -d disk.raw.zst disk.raw.zst.part- && rm disk.raw.zst && sha256sum disk.raw.zst.part-* > SHA256SUMS
 
       - name: Upload as a workflow artifact
+        if: ${{ env.DESTINATION == 'artifact' }}
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: github-runner-disk-${{ inputs.tag }}
+          name: github-runner-disk-${{ env.TAG }}
           path: out/disk.raw.zst.part-*
           retention-days: 14
           compression-level: 0
 
       - name: Attach to a GitHub release
-        if: ${{ inputs.release }}
-        env:
-          GH_TOKEN: ${{ github.token }}
-          NOTES: Raw bootc disk image of ${{ inputs.tag }} with the bound runner image. Join with `cat disk.raw.zst.part-* | zstd -d > disk.raw`, check with SHA256SUMS, write it to a disk with dd.
+        if: ${{ env.DESTINATION == 'release' }}
         run: | #sh
           set -euo pipefail
           rel="disk-${TAG}-$(date -u +%Y%m%d-%H%M)"
-          gh release create "$rel" --repo "$GITHUB_REPOSITORY" --title "Disk image ${TAG}" --notes "$NOTES"
-          gh release upload "$rel" --repo "$GITHUB_REPOSITORY" out/disk.raw.zst.part-* out/SHA256SUMS
+          gh release create "$rel" --title "Disk image ${TAG}" --notes "Raw bootc disk image of ${TAG} with the bound runner image. Join the parts with \`cat disk.raw.zst.part-* | zstd -d > disk.raw\`, check SHA256SUMS, write it to a disk with dd."
+          gh release upload "$rel" out/disk.raw.zst.part-* out/SHA256SUMS
           echo "Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${rel}" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          GH_TOKEN: ${{ github.token }}
+
+      # az is preinstalled on the hosted runner; it uploads large files in blocks
+      - name: Upload to Azure blob storage
+        if: ${{ env.DESTINATION == 'azure' }}
+        run: | #sh
+          set -euo pipefail
+          name="github-runner-${TAG}-$(date -u +%Y%m%d).raw.zst"
+          az storage blob upload --container-name "$AZURE_STORAGE_CONTAINER" --file out/disk.raw.zst --name "$name" --overwrite true
+          echo "Uploaded blob \`$name\` to container \`$AZURE_STORAGE_CONTAINER\`" >> "$GITHUB_STEP_SUMMARY"
+        env:
+          AZURE_STORAGE_CONTAINER: ${{ vars.AZURE_STORAGE_CONTAINER }}

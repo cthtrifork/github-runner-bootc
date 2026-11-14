@@ -1,0 +1,28 @@
+sequenceDiagram
+    autonumber
+    participant D as Developer
+    participant CI as GitHub Actions
+    participant R as ghcr.io
+    participant H as Host (bootc)
+    participant S as github-runner@N
+    participant G as GitHub
+
+    D->>CI: PR (labels e2e, e2e-live, disk, push)
+    CI->>R: build and push OS image
+    CI->>CI: QEMU boot, no network: bound image must work offline
+    CI->>CI: e2e-live: VM registers a runner, live job runs on it
+    CI-->>D: raw disk (release or Azure)
+
+    Note over H: Install once: dd the disk, or bootc install.<br/>The runner image is bound, so it is already on the disk.
+    D->>H: github-runner-seed-app (GitHub App key)
+
+    loop for every job
+        S->>G: installation token, then generate-jitconfig (single use)
+        S->>S: start container from the bound image (Pull=never)
+        S->>G: runner connects, waits for a job
+        G-->>S: job
+        S->>G: logs and result
+        Note over S: container exits, systemd starts a fresh one
+    end
+
+    Note over H: Nightly: bootc upgrade stages an update.<br/>Idle runners stop, busy ones finish, then reboot.
