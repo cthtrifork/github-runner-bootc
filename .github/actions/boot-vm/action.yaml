@@ -13,12 +13,15 @@ inputs:
   memory:
     description: Guest memory
     default: 6G
+  uefi:
+    description: Boot with UEFI firmware (OVMF), for a disk that was installed by an ISO
+    default: "false"
 runs:
   using: composite
   steps:
     - name: Install QEMU
       shell: bash
-      run: sudo apt-get install -y --no-install-recommends -qq qemu-system-x86 socat
+      run: sudo apt-get install -y --no-install-recommends -qq qemu-system-x86 ovmf socat
 
     - name: Boot
       shell: bash
@@ -26,9 +29,16 @@ runs:
         DISK: ${{ inputs.disk }}
         MEMORY: ${{ inputs.memory }}
         RESTRICT: ${{ inputs.network == 'restricted' && ',restrict=on' || '' }}
+        UEFI: ${{ inputs.uefi }}
       run: | #sh
         [ -e /dev/kvm ] || echo "::warning::no /dev/kvm, QEMU will be slow"
-        sudo qemu-system-x86_64 -name bootc-vm -enable-kvm -cpu host -smp "$(nproc)" -m "$MEMORY" \
+        firmware=()
+        if [ "$UEFI" = true ]; then
+          # the variables file keeps the boot entry the installer wrote
+          [ -e out/ovmf-vars.fd ] || cp /usr/share/OVMF/OVMF_VARS_4M.fd out/ovmf-vars.fd
+          firmware=(-drive if=pflash,format=raw,readonly=on,file=/usr/share/OVMF/OVMF_CODE_4M.fd -drive if=pflash,format=raw,file=out/ovmf-vars.fd)
+        fi
+        sudo qemu-system-x86_64 -name bootc-vm -enable-kvm -cpu host -smp "$(nproc)" -m "$MEMORY" "${firmware[@]}" \
           -drive if=virtio,file="$DISK",format=raw \
           -netdev "user,id=n0${RESTRICT},hostfwd=tcp::2222-:22" -device virtio-net-pci,netdev=n0 \
           -display none -monitor unix:/tmp/qemu-monitor-sock,server,nowait -serial file:out/serial.log -daemonize

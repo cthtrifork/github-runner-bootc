@@ -1,0 +1,16 @@
+# an unattended installation for the e2e test: the SSH key replaces the account the installer asks for
+[customizations.installer.kickstart]
+contents = """
+lang en_US.UTF-8
+keyboard us
+timezone UTC --utc
+network --bootproto=dhcp --activate
+zerombr
+clearpart --all --initlabel
+part /boot/efi --fstype=efi --size=600
+part /boot --fstype=xfs --size=1024 --label=boot
+part / --fstype=xfs --grow
+rootpw --lock
+sshkey --username=root "@SSH_KEY@"
+poweroff
+"""
