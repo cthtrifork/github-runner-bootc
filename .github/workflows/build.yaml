@@ -19,8 +19,10 @@ on:
       - "**/*.md"
   push:
     branches: [main]
-    paths-ignore:
-      - "**/*.md"
+    # only changes to the image publish a release; the other files were tested on their pull request
+    paths:
+      - github-runner.containerfile
+      - system_files/**
 
 permissions:
   contents: read
@@ -37,10 +39,32 @@ env:
   PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.fork != true && (contains(github.event.pull_request.labels.*.name, 'push') || contains(github.event.pull_request.labels.*.name, 'e2e') || contains(github.event.pull_request.labels.*.name, 'e2e-live'))) }}
 
 jobs:
+  # the weekly run builds only when the base image is newer or the published image is 14 days old
+  gate:
+    name: Decide whether to build
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      build: ${{ steps.gate.outputs.build }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Gate
+        id: gate
+        run: .github/scripts/image-needs-rebuild.sh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          IMAGE: ghcr.io/${{ github.repository }}
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ github.token }}
+
   build:
     name: Build ${{ matrix.variant }} image
+    needs: gate
     # other labels (Renovate adds several) start nothing
-    if: ${{ github.event.action != 'labeled' || contains(fromJSON('["e2e","e2e-live","push"]'), github.event.label.name) }}
+    if: ${{ needs.gate.outputs.build == 'true' && (github.event.action != 'labeled' || contains(fromJSON('["e2e","e2e-live","push"]'), github.event.label.name)) }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
     strategy:
