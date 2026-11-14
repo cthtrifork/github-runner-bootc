@@ -104,7 +104,7 @@ jobs:
     name: E2E (${{ needs.build.outputs.tier }})
     needs: build
     if: ${{ needs.build.outputs.tier != 'none' && needs.build.outputs.pushed == 'true' && github.event.pull_request.draft != true }}
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 45
     permissions:
       contents: read
