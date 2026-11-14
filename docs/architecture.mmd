@@ -16,7 +16,7 @@ flowchart LR
         MIRROR["Internal mirror<br/>airgapped sites"]
     end
 
-    DEST["Release asset<br/>or Azure blob<br/>(raw disk, zstd)"]
+    DEST["Azure blob storage<br/>(raw disk, zstd)"]
 
     subgraph HOST["Host: VM or bare metal (bootc, x86_64)"]
         direction TB

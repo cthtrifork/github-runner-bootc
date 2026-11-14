@@ -27,8 +27,8 @@ See [docs/architecture.md](docs/architecture.md) for the architecture and flow d
 
 ### Use it
 
-1. Get a disk image: run the **Create disk image** workflow (raw image with the bound runner image, attached to a
-   release in parts below 2 GiB), or `bootc install to-disk` from a host that has the image and the runner image in
+1. Get a disk image: run the **Create disk image** workflow (raw image with the bound runner image, zstd compressed, uploaded to
+   Azure blob storage: it is about 3.7 GiB, too big for a release asset), or `bootc install to-disk` from a host that has the image and the runner image in
    its container storage. An Anaconda ISO would not carry the bound image.
 2. Boot it, then seed the GitHub App: `sudo github-runner-seed-app --scope repo:owner/name --app-id N
    --installation-id N [--instances 2] key.pem` (org scope: `--scope org:name`).
@@ -63,6 +63,8 @@ the `PR title` workflow. Every change needs review from the code owner.
 | Variable | `RENOVATE_APP_CLIENT_ID` | `renovate.yaml` |
 | Secret | `RENOVATE_APP_PRIVATE_KEY` | `renovate.yaml` |
 | Secret | `PAT_RENOVATEBOT` | `renovate.yaml` (ghcr.io lookups) |
+| Secret | `AZURE_STORAGE_CONNECTION_STRING` | `create-disk-image.yaml` |
+| Variable | `AZURE_STORAGE_CONTAINER` | `create-disk-image.yaml` |
 
 The Renovate GitHub App must be installed on this repository.
 
@@ -74,4 +76,4 @@ write*, installed on this repository only) and set:
 | Variable | `E2E_APP_CLIENT_ID`, `E2E_APP_ID`, `E2E_INSTALLATION_ID` |
 | Secret | `E2E_APP_PRIVATE_KEY` |
 
-Create the labels `e2e`, `e2e-live` and `push`.
+Create the labels `e2e`, `e2e-live`, `push` and `disk` (`disk` dry-runs the disk image build on a PR, without the upload).

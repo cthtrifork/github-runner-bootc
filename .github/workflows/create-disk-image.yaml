@@ -5,13 +5,10 @@ name: Create disk image
 # An Anaconda ISO is deliberately not offered: bootc does not support logically bound images with Anaconda, so an ISO
 # would boot without the runner image.
 #
-# Where the compressed image goes (`destination`):
-#   auto      a GitHub release when it fits one asset (2 GiB limit per file), Azure blob storage when it is larger
-#   release   a GitHub release, split into parts of 1900 MiB when needed (join: cat disk.raw.zst.part-* | zstd -d > disk.raw)
-#   azure     the blob container configured below
-#   artifact  a workflow artifact (14 days)
-# The `disk` label on a PR runs the whole thing for that PR's image with a throwaway key and the artifact destination,
-# and reports the sizes: use it to test changes to this workflow.
+# The compressed image is uploaded to Azure blob storage (secret AZURE_STORAGE_CONNECTION_STRING, variable
+# AZURE_STORAGE_CONTAINER): it is about 3.7 GiB, more than the 2 GiB a GitHub release asset can hold.
+# The `disk` label on a PR runs everything except the upload, with a throwaway key, and reports the sizes: use it to test
+# changes to this workflow.
 on:
   workflow_dispatch:
     inputs:
@@ -29,12 +26,6 @@ on:
         required: false
         default: 80G
         type: string
-      destination:
-        description: "Where to put the compressed image"
-        required: false
-        default: auto
-        type: choice
-        options: [auto, release, azure, artifact]
   pull_request:
     types: [labeled]
     branches: [main]
@@ -54,13 +45,12 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
-      contents: write # create the release and upload the parts
+      contents: read
       packages: read # pull the image
     env:
       IMAGE_FULL: ghcr.io/${{ github.repository }}
       TAG: ${{ inputs.tag || format('pr-{0}', github.event.pull_request.number) }}
       DISK_SIZE: ${{ inputs.disk_size || '80G' }}
-      DESTINATION: ${{ inputs.destination || 'artifact' }}
       AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -106,40 +96,11 @@ jobs:
           |---|---|
           | raw (sparse, apparent) | $((raw / 1048576)) MiB |
           | compressed (zstd -3) | $((bytes / 1048576)) MiB |
-          | fits one release asset (< 2 GiB) | $([ "$bytes" -lt 2147483648 ] && echo yes || echo no) |" >> "$GITHUB_STEP_SUMMARY"
-          if [ "$DESTINATION" = auto ]; then
-            if [ "$bytes" -lt 2000000000 ]; then dest=release; else dest=azure; fi
-            echo "DESTINATION=$dest" >> "$GITHUB_ENV"
-            echo "auto: $dest" >> "$GITHUB_STEP_SUMMARY"
-          fi
-
-      - name: Split for a release
-        if: ${{ env.DESTINATION == 'release' || env.DESTINATION == 'artifact' }}
-        run: cd out && split -b 1900M -d disk.raw.zst disk.raw.zst.part- && rm disk.raw.zst && sha256sum disk.raw.zst.part-* > SHA256SUMS
-
-      - name: Upload as a workflow artifact
-        if: ${{ env.DESTINATION == 'artifact' }}
-        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        with:
-          name: github-runner-disk-${{ env.TAG }}
-          path: out/disk.raw.zst.part-*
-          retention-days: 14
-          compression-level: 0
-
-      - name: Attach to a GitHub release
-        if: ${{ env.DESTINATION == 'release' }}
-        run: | #sh
-          set -euo pipefail
-          rel="disk-${TAG}-$(date -u +%Y%m%d-%H%M)"
-          gh release create "$rel" --title "Disk image ${TAG}" --notes "Raw bootc disk image of ${TAG} with the bound runner image. Join the parts with \`cat disk.raw.zst.part-* | zstd -d > disk.raw\`, check SHA256SUMS, write it to a disk with dd."
-          gh release upload "$rel" out/disk.raw.zst.part-* out/SHA256SUMS
-          echo "Release: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${rel}" >> "$GITHUB_STEP_SUMMARY"
-        env:
-          GH_TOKEN: ${{ github.token }}
+          " >> "$GITHUB_STEP_SUMMARY"
 
       # az is preinstalled on the hosted runner; it uploads large files in blocks
       - name: Upload to Azure blob storage
-        if: ${{ env.DESTINATION == 'azure' }}
+        if: ${{ github.event_name == 'workflow_dispatch' }}
         run: | #sh
           set -euo pipefail
           name="github-runner-${TAG}-$(date -u +%Y%m%d).raw.zst"

@@ -23,7 +23,7 @@ flowchart LR
         MIRROR["Internal mirror<br/>airgapped sites"]
     end
 
-    DEST["Release asset<br/>or Azure blob<br/>(raw disk, zstd)"]
+    DEST["Azure blob storage<br/>(raw disk, zstd)"]
 
     subgraph HOST["Host: VM or bare metal (bootc, x86_64)"]
         direction TB
@@ -71,7 +71,7 @@ sequenceDiagram
     CI->>R: build and push OS image
     CI->>CI: QEMU boot, no network: bound image must work offline
     CI->>CI: e2e-live: VM registers a runner, live job runs on it
-    CI-->>D: raw disk (release or Azure)
+    CI-->>D: raw disk (Azure blob)
 
     Note over H: Install once: dd the disk, or bootc install.<br/>The runner image is bound, so it is already on the disk.
     D->>H: github-runner-seed-app (GitHub App key)
