@@ -1,0 +1,30 @@
+change-template: '- $TITLE (#$NUMBER)'
+change-title-escapes: '\<*_&'
+no-changes-template: '- No changes, rebuilt with the latest base image and packages'
+categories:
+  - title: Features
+    when:
+      conventional:
+        type: feat
+  - title: Fixes
+    when:
+      conventional:
+        types: [fix, security]
+  - title: Dependencies
+    collapse-after: 5
+    when:
+      conventional:
+        scope: deps
+  - title: Maintenance
+    when:
+      conventional:
+        types: [perf, refactor, docs, test, build, ci, chore, revert]
+template: |
+  ## Images
+
+  - `ghcr.io/$OWNER/$REPOSITORY:$RESOLVED_TAG`
+  - `ghcr.io/$OWNER/offline-$REPOSITORY:$RESOLVED_TAG`
+
+  ## Changes
+
+  $CHANGES

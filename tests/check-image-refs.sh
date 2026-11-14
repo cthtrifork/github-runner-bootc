@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
-# The runner image is named twice: RUNNER_IMAGE_TAG in github-runner.containerfile (embedded into the OS image) and Image= in
-# github-runner@.container (run by podman after github-runner-image-load.service loaded it). The tag must be the same, or the
-# unit would ask for an image that is not there.
+# The runner image tag is in github-runner.containerfile and in the Quadlet unit; they must match.
 set -euo pipefail
 
 unit="${1:-system_files/usr/share/containers/systemd/github-runner@.container}"

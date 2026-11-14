@@ -2,7 +2,7 @@
 # Store the GitHub App credentials the runners register with, then start the runner instances.
 #   sudo github-runner-seed-app --scope repo:owner/name|org:name --app-id <client id or app id> --installation-id N [--instances 1] \
 #        [--labels a,b,c] [--runner-group-id 1] [--api-url https://github.example/api/v3] [private-key.pem]
-# The key is read from a file or stdin, never from an argument, so it stays out of shell history and `ps`.
+# The key comes from a file or stdin, never an argument.
 set -euo pipefail
 
 [[ $EUID -eq 0 ]] || { echo "Run as root: sudo $0 ..." >&2; exit 1; }
@@ -23,7 +23,6 @@ while (($#)); do
 done
 
 [[ "$scope" =~ ^(repo:[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+|org:[A-Za-z0-9_.-]+)$ ]] || { echo "--scope must be repo:<owner>/<repo> or org:<org>" >&2; exit 1; }
-# GitHub accepts the Client ID (Iv...) as the JWT issuer, like the numeric App ID
 [[ "$app_id" =~ ^([0-9]+|Iv[0-9A-Za-z]+)$ ]] || { echo "--app-id must be the Client ID (Iv...) or the numeric App ID" >&2; exit 1; }
 [[ "$installation_id" =~ ^[0-9]+$ ]] || { echo "--installation-id must be a number" >&2; exit 1; }
 [[ "$instances" =~ ^[1-9][0-9]*$ ]] || { echo "--instances must be a positive number" >&2; exit 1; }
@@ -53,8 +52,7 @@ API_URL=$api_url
 MIN_FREE_GB=10"
 echo "Credentials stored in $dir (root-only, 0600)."
 
-# The unit is generated from the Quadlet file, and systemd cannot `enable` a generated unit. Link the instances into
-# multi-user.target.wants by hand (the link name carries the instance), then start them.
+# systemd cannot `enable` a unit generated from a Quadlet file: link the instances in by hand
 install -d /etc/systemd/system/multi-user.target.wants
 for ((i = 1; i <= instances; i++)); do
     ln -sf /run/systemd/generator/github-runner@.service "/etc/systemd/system/multi-user.target.wants/github-runner@${i}.service"

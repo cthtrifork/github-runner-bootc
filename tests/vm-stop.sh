@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Save the VM journal as out/journal/<name>.log and power QEMU off: tests/vm-stop.sh offline
+# Save the VM journal as out/journal/<name>.log and power QEMU off
 set -uo pipefail
 
 name="${1:?Usage: $0 <name>}"

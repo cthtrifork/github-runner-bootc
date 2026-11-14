@@ -2,8 +2,15 @@
 
 A [bootc](https://containers.github.io/bootc/) image (Fedora 45, x86_64) that turns a VM or a bare-metal host into
 ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh container from the
-[ARC runner image](https://github.com/cthtrifork/talos-gitops), which ships inside the OS image, so the host needs no
-registry to run (airgap friendly).
+[ARC runner image](https://github.com/cthtrifork/talos-gitops).
+
+| Image | Runner image | Size | Use it when | Links |
+|---|---|---|---|---|
+| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | small | the host can reach a registry or a mirror | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/github-runner-bootc) |
+| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image | about 3.5 GiB larger | the host has no registry or network (airgap) | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/offline-github-runner-bootc) |
+
+Both are published with every build of `main` and the weekly rebuild: see the [releases](https://github.com/cthtrifork/github-runner-bootc/releases)
+for the tags and the changes, and the [architecture](docs/architecture.md) for how it fits together.
 
 ## Why
 
@@ -21,17 +28,16 @@ one artifact:
 
 ```mermaid
 flowchart LR
-    A["1. Get the disk image<br/>(Azure blob)"] --> B["2. Write it to a disk<br/>VM or bare metal"]
-    B --> C["3. Boot, then seed the<br/>GitHub App (one command)"]
+    A["1. Install the image<br/>VM or bare metal"] --> B["2. Boot it"]
+    B --> C["3. Seed the GitHub App<br/>(one command)"]
     C --> D["Jobs run, one fresh<br/>container per job"]
     D --> E["Updates itself at night,<br/>only when idle"]
 ```
 
 ## Use it
 
-1. **Disk image:** run the *Create disk image* workflow (a raw image, zstd compressed, uploaded to Azure blob
-   storage), and write it to the disk with `dd`. On a host that already runs bootc, `bootc switch` to the image
-   `ghcr.io/cthtrifork/github-runner-bootc`. The runner image is embedded in the OS image, so every installer carries it (an ISO is planned, see #20).
+1. **Install:** write the raw disk image to the disk with `dd`, or run `bootc switch` to one of the images above on a
+   host that already runs bootc. An ISO is planned (see #20).
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
    ```
@@ -51,10 +57,6 @@ The runner container is privileged (it runs podman and buildah inside), so **a j
 dedicated host and attach it only to private or trusted repositories through a runner group. This repository is public:
 never point its own PR workflows at it.
 
-## Development
+## Contributing
 
-- [Architecture and flow](docs/architecture.md), [repository setup](docs/setup.md) (secrets, variables, labels).
-- Opt-in PR labels: `e2e` boots the image in QEMU with no network; `e2e-live` also registers a real runner and runs a
-  job on it; `disk` dry-runs the disk image build; `push` publishes the PR image.
-- PR titles follow [Conventional Commits](https://www.conventionalcommits.org/); every change needs review from the code
-  owner.
+See [docs/architecture.md](docs/architecture.md). PR titles follow [Conventional Commits](https://www.conventionalcommits.org/).
