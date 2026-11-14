@@ -1,0 +1,82 @@
+name: Create ISO
+
+# Builds an installer ISO of a published image with bootc-image-builder and uploads it to Azure blob storage (secret
+# AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER). The `iso` PR label builds without uploading.
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag to install (latest, main-<date>-<n>, pr-<n>)"
+        required: true
+        default: latest
+        type: string
+      variant:
+        description: "Which image: default pulls the runner image on the first boot, offline embeds it"
+        type: choice
+        options: [default, offline]
+        default: default
+  pull_request:
+    types: [labeled]
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: create-iso-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  iso:
+    name: ISO
+    # other labels and forks start nothing
+    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.label.name == 'iso' && github.event.pull_request.head.repo.fork != true) }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    permissions:
+      contents: read
+      packages: read # pull the image
+    env:
+      IMAGE_FULL: ${{ inputs.variant == 'offline' && format('ghcr.io/{0}/offline-{1}', github.repository_owner, github.event.repository.name) || format('ghcr.io/{0}', github.repository) }}
+      TAG: ${{ inputs.tag || format('pr-{0}', github.event.pull_request.number) }}
+      AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: More disk for container storage
+        uses: ublue-os/container-storage-action@dc1f4c8f17b672069e921f001132f7cf98a423a6 # main (the action has no tags) # zizmor: ignore[stale-action-refs]
+        with:
+          target-dir: /var/lib/containers
+
+      - uses: redhat-actions/podman-login@50c2d9a331bb67c8fdab99b86455fad05e2e3252 # v2.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+          auth_file_path: ${{ runner.temp }}/auth.json
+
+      - name: Registry credentials for the root podman
+        run: sudo install -D -m 600 "$RUNNER_TEMP/auth.json" /root/.config/containers/auth.json
+
+      - name: Build the ISO
+        id: bib
+        uses: ublue-os/bootc-image-builder-action@b98784c42327746e107a6a753b64f44823bdbf2f # main (the action has no tags) # zizmor: ignore[stale-action-refs]
+        with:
+          config-file: iso.toml
+          type: iso
+          rootfs: xfs
+          image: ${{ env.IMAGE_FULL }}:${{ env.TAG }}
+
+      - name: Size
+        env:
+          ISO: ${{ steps.bib.outputs.output-path }}
+        run: 'echo "ISO $(basename "$ISO") is $(( $(stat -c %s "$ISO") / 1048576 )) MiB" | tee -a "$GITHUB_STEP_SUMMARY"'
+
+      - name: Upload to Azure blob storage
+        if: ${{ github.event_name == 'workflow_dispatch' }}
+        run: az storage blob upload --container-name "$AZURE_STORAGE_CONTAINER" --file "$ISO" --name "github-runner-${TAG}-$(date -u +%Y%m%d).iso" --overwrite true
+        env:
+          ISO: ${{ steps.bib.outputs.output-path }}
+          AZURE_STORAGE_CONTAINER: ${{ vars.AZURE_STORAGE_CONTAINER }}

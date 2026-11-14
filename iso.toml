@@ -1,0 +1,3 @@
+# interactive installer: the user picks the disk and creates the admin account
+[customizations.installer.kickstart]
+contents = ""
