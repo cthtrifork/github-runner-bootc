@@ -49,10 +49,9 @@
       automerge: true,
     },
     {
-      // The runner image tag is in github-runner.containerfile and in the Quadlet unit; bump both in one PR.
+      // the runner image (Quadlet unit) is pinned by its exact version tag
       matchPackageNames: ['ghcr.io/cthtrifork/talos-gitops/github-actions-runner'],
       pinDigests: false,
-      groupName: 'runner image',
     },
     {
       // the Fedora base image: updates wait for approval on the Dependency Dashboard

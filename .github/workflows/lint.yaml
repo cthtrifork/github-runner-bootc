@@ -74,7 +74,7 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: The embedded image and the unit use the same tag
+      - name: The runner image has an exact version tag
         run: tests/check-image-refs.sh
 
   hadolint:
