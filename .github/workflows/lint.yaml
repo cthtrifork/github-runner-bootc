@@ -71,6 +71,7 @@ jobs:
         run: | #sh
           # only scripts with a bash/sh shebang (skips sourced profile.d snippets and vendored zsh code)
           mapfile -t files < <(git ls-files '*.sh' | while read -r f; do head -n1 "$f" | grep -qE '^#!.*(ba)?sh' && echo "$f"; done)
+          [ "${#files[@]}" -gt 0 ] || { echo "No shell scripts yet"; exit 0; }
           shellcheck --severity=error "${files[@]}"
 
   hadolint:
@@ -98,7 +99,7 @@ jobs:
 
       - name: Run hadolint (errors only, ADD is used intentionally)
         run: | #sh
-          git ls-files '*.containerfile' | xargs "$HOME/.local/bin/hadolint" --failure-threshold error --ignore DL3020
+          git ls-files '*.containerfile' | xargs -r "$HOME/.local/bin/hadolint" --failure-threshold error --ignore DL3020
 
   # zizmor audits workflows for security problems (pedantic persona, all workflows).
   zizmor:
