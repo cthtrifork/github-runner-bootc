@@ -23,7 +23,7 @@ one artifact:
 - **Clean by default.** Every job runs in a fresh container, so nothing leaks from one job to the next and the host does
   not accumulate state.
 - **Nothing to rebuild by hand.** A new host is a disk image plus one seed command; a broken host is replaced, not repaired.
-- **Airgap friendly.** The runner image ships inside the OS image, so the host needs no registry, only GitHub.
+- **Airgap friendly.** The offline image ships the runner image inside the OS image, so the host needs no registry, only GitHub.
 - **No secrets in the image.** The GitHub App key is seeded at first boot and never baked in.
 
 ```mermaid
@@ -37,7 +37,7 @@ flowchart LR
 ## Use it
 
 1. **Install:** write the raw disk image to the disk with `dd`, or run `bootc switch` to one of the images above on a
-   host that already runs bootc. An ISO is planned (see #20).
+   host that already runs bootc. An installer ISO is experimental (see #20 and [Build a disk image yourself](#build-a-disk-image-yourself)).
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
    ```
@@ -91,4 +91,7 @@ never point its own PR workflows at it.
 
 ## Contributing
 
-See [docs/architecture.md](docs/architecture.md) and [docs/testing.md](docs/testing.md). PR titles follow [Conventional Commits](https://www.conventionalcommits.org/).
+- [Architecture](docs/architecture.md): how the host, the runner and GitHub fit together.
+- [Testing](docs/testing.md): the checks on every PR and the opt-in labels (`e2e`, `e2e-live`, `disk`, `iso`).
+- PR titles follow [Conventional Commits](https://www.conventionalcommits.org/). Every merge of an image change to `main` publishes a
+  [release](https://github.com/cthtrifork/github-runner-bootc/releases).
