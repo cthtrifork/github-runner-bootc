@@ -14,5 +14,8 @@ else
     skopeo copy "oci:/usr/share/github-runner/runner-image:${tag}" "containers-storage:${ref}"
 fi
 
+# The copy is several GiB: make sure it is on disk if the power goes right after the first boot.
+sync
+
 # Drop runner images of earlier OS versions; the jobs' own images live in the containers' storage, not here.
 podman images --format '{{.Repository}}:{{.Tag}}' | { grep -F "${repo}:" || true; } | { grep -vxF "$ref" || true; } | xargs -r podman rmi
