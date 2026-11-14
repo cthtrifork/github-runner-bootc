@@ -55,4 +55,11 @@ if grep -qiE 'unable to pull|pinging container registry|no such host|lookup .* o
     exit 1
 fi
 
+echo "--- disk usage (MiB) ---"
+df -BM --output=target,used,avail / /var | cat
+graphroot="$(podman info --format '{{.Store.GraphRoot}}')"
+echo "container storage: $graphroot"
+du -xsm /sysroot/ostree/repo /sysroot/ostree/deploy "$graphroot" /var/lib/github-runner /usr/share/github-runner 2>&1 || true
+podman system df
+
 echo "== OK =="

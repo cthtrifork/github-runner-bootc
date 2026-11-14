@@ -2,7 +2,8 @@ name: Create ISO
 
 # Builds an installer ISO of a published image with bootc-image-builder. A manual run uploads it to Azure blob storage
 # (secret AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER) and skips the upload while the secret is
-# not set. The `iso` PR label only builds; the PR image must exist already (labels `push` or `e2e` publish it).
+# not set. The `iso` PR label instead builds an ISO with an unattended kickstart, installs it in QEMU and runs the system
+# tests on the installed disk; the PR image must exist already (labels `push` or `e2e` publish it).
 on:
   workflow_dispatch:
     inputs:
@@ -62,11 +63,16 @@ jobs:
       - name: Registry credentials for the root podman
         run: sudo install -D -m 600 "$RUNNER_TEMP/auth.json" /root/.config/containers/auth.json
 
+      # a PR builds an ISO with an unattended kickstart and installs it; a manual run builds the interactive one
+      - name: Ephemeral SSH key and kickstart
+        if: ${{ github.event_name == 'pull_request' }}
+        run: mkdir -p out && ssh-keygen -q -t ed25519 -N "" -f out/ci_ssh_key && sed "s|@SSH_KEY@|$(cat out/ci_ssh_key.pub)|" tests/iso-test.toml.in > out/iso-test.toml
+
       - name: Build the ISO
         id: bib
         uses: ublue-os/bootc-image-builder-action@b98784c42327746e107a6a753b64f44823bdbf2f # main (the action has no tags) # zizmor: ignore[stale-action-refs]
         with:
-          config-file: ./iso.toml
+          config-file: ${{ github.event_name == 'pull_request' && './out/iso-test.toml' || './iso.toml' }}
           type: iso
           rootfs: xfs
           image: ${{ env.IMAGE_FULL }}:${{ env.TAG }}
@@ -75,6 +81,29 @@ jobs:
         env:
           ISO: ${{ steps.bib.outputs.output-path }}
         run: 'echo "ISO $(basename "$ISO") is $(( $(stat -c %s "$ISO") / 1048576 )) MiB" | tee -a "$GITHUB_STEP_SUMMARY"'
+
+      - name: Install from the ISO, unattended
+        if: ${{ github.event_name == 'pull_request' }}
+        run: tests/iso-install.sh "$ISO" out/disk.raw
+        env:
+          ISO: ${{ steps.bib.outputs.output-path }}
+
+      - name: Boot the installed disk
+        if: ${{ github.event_name == 'pull_request' }}
+        uses: ./.github/actions/boot-vm
+        with:
+          disk: out/disk.raw
+          ssh_key: out/ci_ssh_key
+          network: open
+          uefi: "true"
+
+      - name: System tests
+        if: ${{ github.event_name == 'pull_request' }}
+        run: tests/vm-ssh.sh bash -s < tests/system-test.sh
+
+      - name: Save the journal and stop the VM
+        if: ${{ always() && github.event_name == 'pull_request' }}
+        run: tests/vm-stop.sh iso && tail -n 100 out/journal/iso.log
 
       - name: Upload to Azure blob storage
         if: ${{ github.event_name == 'workflow_dispatch' && env.AZURE_STORAGE_CONNECTION_STRING != '' }}

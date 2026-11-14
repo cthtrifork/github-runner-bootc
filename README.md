@@ -4,10 +4,24 @@ A [bootc](https://containers.github.io/bootc/) image (Fedora 45, x86_64) that tu
 ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh container from the
 [ARC runner image](https://github.com/cthtrifork/talos-gitops).
 
-| Image | Runner image | Size | Use it when | Links |
-|---|---|---|---|---|
-| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | small | the host can reach a registry or a mirror | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/github-runner-bootc) |
-| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image | about 3.5 GiB larger | the host has no registry or network (airgap) | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/offline-github-runner-bootc) |
+| Image | Runner image | Download (compressed) | Installer ISO | Use it when | Links |
+|---|---|---|---|---|---|
+| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | 1.0 GiB, then 2.9 GiB on the first boot: 3.9 GiB | 2.2 GiB | the host can reach a registry or a mirror | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/github-runner-bootc) |
+| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image | 3.9 GiB, nothing more to pull | about 5 GiB (estimate) | the host has no registry or network (airgap) | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/offline-github-runner-bootc) |
+
+The total is the same: the offline image only moves the runner image from the first boot into the OS image. Sizes are the
+compressed registry sizes of the latest release; the installed system and the jobs' images and builds need much more disk,
+so plan for tens of GiB.
+
+### Disk space
+
+| | Installed (measured) | During an update | Plan for |
+|---|---|---|---|
+| Default | 11 GiB: OS 2, runner image 8 | 13 GiB: the staged image doubles the OS | 60 GiB |
+| Offline | 14 GiB: OS 5, runner image 8 | 19 GiB: the staged image doubles the OS | 60 GiB |
+
+A new runner image version briefly needs another 8 GiB while it replaces the old one. The jobs' own images and builds
+need space too (an estimate: 20 GiB per runner instance, `--instances`), so add that to the 60 GiB.
 
 Both are published with every build of `main` and the weekly rebuild: see the [releases](https://github.com/cthtrifork/github-runner-bootc/releases)
 for the tags and the changes, and the [architecture](docs/architecture.md) for how it fits together.
@@ -23,7 +37,7 @@ one artifact:
 - **Clean by default.** Every job runs in a fresh container, so nothing leaks from one job to the next and the host does
   not accumulate state.
 - **Nothing to rebuild by hand.** A new host is a disk image plus one seed command; a broken host is replaced, not repaired.
-- **Airgap friendly.** The runner image ships inside the OS image, so the host needs no registry, only GitHub.
+- **Airgap friendly.** The offline image ships the runner image inside the OS image, so the host needs no registry, only GitHub.
 - **No secrets in the image.** The GitHub App key is seeded at first boot and never baked in.
 
 ```mermaid
@@ -37,7 +51,7 @@ flowchart LR
 ## Use it
 
 1. **Install:** write the raw disk image to the disk with `dd`, or run `bootc switch` to one of the images above on a
-   host that already runs bootc. An ISO is planned (see #20).
+   host that already runs bootc. An installer ISO is experimental (see #20 and [Build a disk image yourself](#build-a-disk-image-yourself)).
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
    ```
@@ -91,4 +105,7 @@ never point its own PR workflows at it.
 
 ## Contributing
 
-See [docs/architecture.md](docs/architecture.md). PR titles follow [Conventional Commits](https://www.conventionalcommits.org/).
+- [Architecture](docs/architecture.md): how the host, the runner and GitHub fit together.
+- [Testing](docs/testing.md): the checks on every PR and the opt-in labels (`e2e`, `e2e-live`, `disk`, `iso`).
+- PR titles follow [Conventional Commits](https://www.conventionalcommits.org/). Every merge of an image change to `main` publishes a
+  [release](https://github.com/cthtrifork/github-runner-bootc/releases).
