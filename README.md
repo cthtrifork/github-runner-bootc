@@ -5,6 +5,20 @@ ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh containe
 [ARC runner image](https://github.com/cthtrifork/talos-gitops), which ships inside the OS image, so the host needs no
 registry to run (airgap friendly).
 
+## Why
+
+Self-hosted runners usually mean two things to look after: an operating system (patching, drift, snapshots) and the
+runner software on top of it (installing, registering, upgrading, cleaning up between jobs). This project makes them
+one artifact:
+
+- **One image, one lifecycle.** The OS, the runner and its tooling are built, tested and versioned together. The host
+  updates itself atomically and rolls back if something breaks, so there is no separate OS patching or runner upgrade.
+- **Clean by default.** Every job runs in a fresh container, so nothing leaks from one job to the next and the host does
+  not accumulate state.
+- **Nothing to rebuild by hand.** A new host is a disk image plus one seed command; a broken host is replaced, not repaired.
+- **Airgap friendly.** The runner image ships inside the OS image, so the host needs no registry, only GitHub.
+- **No secrets in the image.** The GitHub App key is seeded at first boot and never baked in.
+
 ```mermaid
 flowchart LR
     A["1. Get the disk image<br/>(Azure blob)"] --> B["2. Write it to a disk<br/>VM or bare metal"]
