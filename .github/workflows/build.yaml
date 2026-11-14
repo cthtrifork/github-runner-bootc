@@ -99,8 +99,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      # Vulnerabilities with a fix available; report only (the weekly rebuild picks fixes up), so a new CVE in a base
-      # package does not turn every PR red.
+      # All CRITICAL/HIGH vulnerabilities, including ones with no fix yet (dnf updateinfo only lists fixed advisories);
+      # report only (the weekly rebuild picks fixes up), so a new CVE in a base package does not turn every PR red.
       - name: Trivy scan
         if: ${{ env.PUSH == 'true' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -109,7 +109,6 @@ jobs:
           scanners: vuln
           format: sarif
           output: trivy.sarif
-          ignore-unfixed: true
           severity: CRITICAL,HIGH
           exit-code: "0"
           timeout: 15m
