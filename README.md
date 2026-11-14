@@ -4,10 +4,14 @@ A [bootc](https://containers.github.io/bootc/) image (Fedora 45, x86_64) that tu
 ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh container from the
 [ARC runner image](https://github.com/cthtrifork/talos-gitops).
 
-| Image | Runner image | Size | Use it when | Links |
-|---|---|---|---|---|
-| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | small | the host can reach a registry or a mirror | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/github-runner-bootc) |
-| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image | about 3.5 GiB larger | the host has no registry or network (airgap) | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/offline-github-runner-bootc) |
+| Image | Runner image | Download (compressed) | Installer ISO | Use it when | Links |
+|---|---|---|---|---|---|
+| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | 1.0 GiB, then 2.9 GiB on the first boot: 3.9 GiB | 2.2 GiB | the host can reach a registry or a mirror | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/github-runner-bootc) |
+| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image | 3.9 GiB, nothing more to pull | about 5 GiB (estimate) | the host has no registry or network (airgap) | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/offline-github-runner-bootc) |
+
+The total is the same: the offline image only moves the runner image from the first boot into the OS image. Sizes are the
+compressed registry sizes of the latest release; the installed system and the jobs' images and builds need much more disk,
+so plan for tens of GiB.
 
 Both are published with every build of `main` and the weekly rebuild: see the [releases](https://github.com/cthtrifork/github-runner-bootc/releases)
 for the tags and the changes, and the [architecture](docs/architecture.md) for how it fits together.
