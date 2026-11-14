@@ -51,6 +51,38 @@ Airgapped sites: point `/etc/containers/registries.conf.d/` at an internal mirro
 at an internal NTP server, and put extra `Volume=` lines (private CA, mirror config) in
 `/etc/containers/systemd/github-runner@.container.d/10-site.conf`. The runner itself only needs GitHub.
 
+## Build a disk image yourself
+
+Both images are public, so you can build the disk instead of downloading one. You need Linux with rootful podman and about
+40 GiB free.
+
+1. Put your public SSH key(s) in `authorized_keys`; they are authorized for `root` on the new host.
+2. Build a raw disk (use `offline-github-runner-bootc` for the airgap variant; the disk is sparse, 80G is only its size):
+
+   ```sh
+   truncate -s 80G disk.raw
+   sudo podman pull ghcr.io/cthtrifork/github-runner-bootc:latest
+   sudo podman run --rm --privileged --pid=host --security-opt label=type:unconfined_t \
+     -v /dev:/dev -v /run/udev:/run/udev:ro -v /var/lib/containers:/var/lib/containers \
+     -v "$PWD:/output" -v "$PWD/authorized_keys:/authorized_keys:ro" \
+     ghcr.io/cthtrifork/github-runner-bootc:latest \
+     bootc install to-disk --via-loopback --generic-image --filesystem xfs \
+       --root-ssh-authorized-keys /authorized_keys /output/disk.raw
+   ```
+
+3. Write it to a disk (`sudo dd if=disk.raw of=/dev/sdX bs=4M conv=fsync status=progress`), or try it in QEMU:
+
+   ```sh
+   qemu-system-x86_64 -enable-kvm -cpu host -smp 4 -m 6G -drive if=virtio,file=disk.raw,format=raw \
+     -netdev user,id=n0,hostfwd=tcp::2222-:22 -device virtio-net-pci,netdev=n0
+   ssh -p 2222 root@localhost
+   ```
+
+4. Seed the GitHub App as in [Use it](#use-it).
+
+This is how `create-disk-image.yaml` builds it. An installer ISO (experimental, see #20) is built by `create-iso.yaml` with
+[bootc-image-builder](https://github.com/osbuild/image-builder) and `iso.toml`: `--type iso --rootfs xfs --config iso.toml`.
+
 ## Security
 
 The runner container is privileged (it runs podman and buildah inside), so **a job is root on the host**. Use a
