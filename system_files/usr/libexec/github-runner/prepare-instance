@@ -6,6 +6,13 @@ inst="${1:?Usage: $0 <instance>}"
 [[ "$inst" =~ ^[0-9]+$ ]] || { echo "instance must be a number" >&2; exit 1; }
 base="/var/lib/github-runner/$inst"
 
+# Optional isolation (ISOLATE_JOBS=1 in /etc/github-runner/config): without it the image storage and caches below are
+# shared by every job of this instance, so a hostile job can poison them for the next one.
+isolate="$(sed -n 's/^ISOLATE_JOBS=//p' /etc/github-runner/config 2>/dev/null | tail -n1 || true)"
+if [[ "${isolate:-0}" == 1 ]]; then
+    rm -rf "${base:?}/containers" "${base:?}/rootless" "${base:?}/cache" "${base:?}/dnf"
+fi
+
 # workspace and scratch are wiped for every job; image storage and caches survive
 rm -rf "${base:?}/work" "${base:?}/var-tmp"
 install -d -m 0755 -o 1001 -g 1001 "$base/work" "$base/rootless" "$base/cache" "$base/dnf"

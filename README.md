@@ -103,6 +103,24 @@ The runner container is privileged (it runs podman and buildah inside), so **a j
 dedicated host and attach it only to private or trusted repositories through a runner group. This repository is public:
 never point its own PR workflows at it.
 
+Because a job is root on the host, anything on the host is in reach of a job, so limit what it can steal and reach:
+
+- **The App key is the crown jewel.** It sits in `/etc/github-runner` and a job can read it. Use one App per host,
+  installed only on the repositories it serves. Prefer `--scope org:name` with a runner group limited to those
+  repositories (it needs only the organization "Self-hosted runners" permission); a repository scope needs
+  Administration: read and write, which lets a stolen key change repository settings. Rotate the key if a job
+  you do not trust ever ran.
+- **Jobs share storage by default.** The image storage and caches of an instance survive between its jobs, so a hostile
+  job can poison them for the next one. `github-runner-seed-app --isolate-jobs` wipes them before every job (slower:
+  images are pulled again). Otherwise attach each host to one trust domain only.
+- **Restrict the network.** The host has no firewall: a job reaches the LAN, the host's services and any cloud metadata
+  endpoint. Put the host on its own VLAN or add egress rules that allow GitHub, your registries and nothing else.
+- **Verify what you boot.** Pin the images by digest and enforce signatures with `/etc/containers/policy.json` and
+  `registries.d` (the releases carry build provenance attestations, see `gh attestation verify`); updates are applied
+  nightly without a human in the loop.
+- Each runner container has a process limit (`--pids-limit`); set `Memory=` and `CPUQuota` in
+  `/etc/containers/systemd/github-runner@.container.d/10-site.conf` to fit the host.
+
 ## Contributing
 
 - [Architecture](docs/architecture.md): how the host, the runner and GitHub fit together.

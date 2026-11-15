@@ -28,9 +28,9 @@ header="$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)"
 payload="$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' $((now - 60)) $((now + 540)) "$app_id" | b64url)"
 signature="$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$dir/private-key.pem" | b64url)"
 
-gh_api() { # <method> <path> [json body]
-    curl -fsS --max-time 30 -X "$1" \
-        -H "Authorization: Bearer ${AUTH}" \
+gh_api() { # <method> <path> [json body]; the credential goes in on stdin, never in the process list
+    printf 'Authorization: Bearer %s\n' "$AUTH" | curl -fsS --max-time 30 -X "$1" \
+        -H @- \
         -H "Accept: application/vnd.github+json" \
         -H "X-GitHub-Api-Version: 2022-11-28" \
         ${3:+-d "$3"} "${API_URL}$2"
@@ -39,6 +39,8 @@ gh_api() { # <method> <path> [json body]
 AUTH="$header.$payload.$signature"
 token="$(gh_api POST "/app/installations/${installation_id}/access_tokens" | jq -er .token)"
 AUTH="$token"
+# the installation token is valid for an hour: revoke it as soon as the JIT config is minted
+trap 'AUTH="$token" gh_api DELETE /installation/token >/dev/null 2>&1 || true' EXIT
 
 case "$SCOPE" in
 repo:*/*) path="/repos/${SCOPE#repo:}/actions/runners/generate-jitconfig" ;;
@@ -53,9 +55,9 @@ jit="$(gh_api POST "$path" "$body" | jq -er .encoded_jit_config)"
 
 install -d -m 0700 /run/github-runner
 tmp="$(mktemp /run/github-runner/.env.XXXXXX)"
-trap 'rm -f "$tmp"' EXIT
+trap 'rm -f "$tmp"; AUTH="$token" gh_api DELETE /installation/token >/dev/null 2>&1 || true' EXIT
 printf 'ACTIONS_RUNNER_INPUT_JITCONFIG=%s\n' "$jit" >"$tmp"
 chmod 0600 "$tmp"
 mv -f "$tmp" "/run/github-runner/${inst}.env"
-trap - EXIT
+trap 'AUTH="$token" gh_api DELETE /installation/token >/dev/null 2>&1 || true' EXIT
 echo "JIT runner configuration minted for $name"

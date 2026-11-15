@@ -42,7 +42,8 @@ jobs:
     env:
       IMAGE_FULL: ${{ inputs.variant == 'offline' && format('ghcr.io/{0}/offline-{1}', github.repository_owner, github.event.repository.name) || format('ghcr.io/{0}', github.repository) }}
       TAG: ${{ inputs.tag || format('pr-{0}', github.event.pull_request.number) }}
-      AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+      # only a flag: the secret itself is passed to the upload step alone, never to PR-modified or third-party steps
+      HAVE_AZURE: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,12 +107,13 @@ jobs:
         run: tests/vm-stop.sh iso && tail -n 100 out/journal/iso.log
 
       - name: Upload to Azure blob storage
-        if: ${{ github.event_name == 'workflow_dispatch' && env.AZURE_STORAGE_CONNECTION_STRING != '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && env.HAVE_AZURE == 'true' }}
         run: az storage blob upload --container-name "$AZURE_STORAGE_CONTAINER" --file "$ISO" --name "github-runner-${TAG}-$(date -u +%Y%m%d).iso" --overwrite true
         env:
           ISO: ${{ steps.bib.outputs.output-path }}
           AZURE_STORAGE_CONTAINER: ${{ vars.AZURE_STORAGE_CONTAINER }}
+          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
 
       - name: Upload skipped
-        if: ${{ github.event_name == 'workflow_dispatch' && env.AZURE_STORAGE_CONNECTION_STRING == '' }}
+        if: ${{ github.event_name == 'workflow_dispatch' && env.HAVE_AZURE != 'true' }}
         run: echo "::notice::AZURE_STORAGE_CONNECTION_STRING is not set, the ISO was built but not uploaded"
