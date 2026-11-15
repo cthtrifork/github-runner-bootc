@@ -21,6 +21,7 @@ install -d -m 0700 /run/github-runner
 touch "$drain"
 trap 'rm -f "$drain"' EXIT
 
+busy=1
 deadline=$((SECONDS + timeout_s))
 while ((SECONDS < deadline)); do
     busy=0

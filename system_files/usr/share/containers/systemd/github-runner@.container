@@ -26,7 +26,7 @@ Environment=BUILDAH_LAYERS=true
 Environment=RUNNER_UPDATE_CA_CERTS=1
 
 # The image runs podman and buildah inside, so it needs a privileged container: a job is root on this host (see the README).
-PodmanArgs=--privileged
+PodmanArgs=--privileged --pids-limit=8192
 
 # per instance: parallel builds on one containers storage corrupt it
 Volume=/var/lib/github-runner/%i/work:/home/runner/_work
@@ -50,7 +50,7 @@ ExecStartPre=/usr/libexec/github-runner/mint-jitconfig %i
 ExecStopPost=/usr/bin/rm -f /run/github-runner/%i.env
 # the runner exits after one job: a restart is the normal cycle
 Restart=always
-RestartSec=5s
+RestartSec=15s
 TimeoutStartSec=300
 
 [Install]

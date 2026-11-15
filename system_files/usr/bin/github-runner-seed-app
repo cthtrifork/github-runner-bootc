@@ -1,13 +1,13 @@
 #!/usr/bin/bash
 # Store the GitHub App credentials the runners register with, then start the runner instances.
 #   sudo github-runner-seed-app --scope repo:owner/name|org:name --app-id <client id or app id> --installation-id N [--instances 1] \
-#        [--labels a,b,c] [--runner-group-id 1] [--api-url https://github.example/api/v3] [private-key.pem]
+#        [--labels a,b,c] [--runner-group-id 1] [--isolate-jobs] [--api-url https://github.example/api/v3] [private-key.pem]
 # The key comes from a file or stdin, never an argument.
 set -euo pipefail
 
 [[ $EUID -eq 0 ]] || { echo "Run as root: sudo $0 ..." >&2; exit 1; }
 
-scope="" app_id="" installation_id="" instances=1 labels="self-hosted,Linux,X64,bootc" group=1 api_url="https://api.github.com" keyfile=""
+scope="" app_id="" installation_id="" instances=1 labels="self-hosted,Linux,X64,bootc" group=1 api_url="https://api.github.com" keyfile="" isolate=0
 while (($#)); do
     case "$1" in
     --scope) scope="$2"; shift 2 ;;
@@ -17,6 +17,7 @@ while (($#)); do
     --labels) labels="$2"; shift 2 ;;
     --runner-group-id) group="$2"; shift 2 ;;
     --api-url) api_url="$2"; shift 2 ;;
+    --isolate-jobs) isolate=1; shift ;;
     -h | --help) sed -n '2,5p' "$0"; exit 0 ;;
     *) keyfile="$1"; shift ;;
     esac
@@ -49,7 +50,8 @@ write config "SCOPE=$scope
 LABELS=$labels
 RUNNER_GROUP_ID=$group
 API_URL=$api_url
-MIN_FREE_GB=10"
+MIN_FREE_GB=10
+ISOLATE_JOBS=$isolate"
 echo "Credentials stored in $dir (root-only, 0600)."
 
 # systemd cannot `enable` a unit generated from a Quadlet file: link the instances in by hand
