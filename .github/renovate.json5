@@ -84,6 +84,7 @@
       matchPackageNames: ['renovate', 'renovatebot/github-action'],
       automerge: true,
       groupName: 'renovate',
+      separateMajorMinor: false,
     },
   ],
   customManagers: [
