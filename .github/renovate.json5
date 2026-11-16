@@ -7,9 +7,11 @@
     'dependencies',
     'automated-pr',
   ],
-  dependencyDashboard: true,
-  dependencyDashboardTitle: 'Dependency Dashboard',
-  dependencyDashboardLabels: ['dependencies'],
+  dependencyDashboard: {
+    enabled: true,
+    title: 'Dependency Dashboard',
+    labels: ['dependencies'],
+  },
   // New releases wait 2 days before a branch or PR exists.
   minimumReleaseAge: '2 days',
   // quay.io and ghcr.io images have no release timestamp: count them as old enough.
