@@ -80,10 +80,10 @@
       "recreateWhen": "always",
     },
     {
-      // Renovate itself automerges every update type
+      // Renovate itself (the action and the version pin) moves in one PR and automerges every update type
       matchPackageNames: ['renovate', 'renovatebot/github-action'],
       automerge: true,
-      groupName: null,
+      groupName: 'renovate',
     },
   ],
   customManagers: [
