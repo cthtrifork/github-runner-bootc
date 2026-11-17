@@ -27,7 +27,7 @@ Environment=BUILDAH_LAYERS=true
 Environment=RUNNER_UPDATE_CA_CERTS=1
 
 # The image runs podman and buildah inside, so it needs a privileged container: a job is root on this host (see the README).
-PodmanArgs=--privileged --pids-limit=8192
+PodmanArgs=--privileged --pids-limit=8192 --pid=host
 
 # per instance: parallel builds on one containers storage corrupt it
 Volume=/var/lib/github-runner/%i/work:/home/runner/_work
@@ -39,6 +39,8 @@ Volume=/var/lib/github-runner/%i/cache:/home/runner/.cache/tmp
 Volume=/var/lib/github-runner/%i/var-tmp:/var/tmp
 Volume=/var/lib/github-runner/%i/docker:/var/lib/docker
 Volume=/usr/libexec/github-runner/container-entrypoint:/entrypoint:ro
+# iptables for dockerd: wrappers that run the host's (the official image has none)
+Volume=/usr/libexec/github-runner/fw:/usr/local/sbin:ro
 Tmpfs=/tmp
 # host devices for jobs that run `bootc install --via-loopback`
 Volume=/dev:/host-dev

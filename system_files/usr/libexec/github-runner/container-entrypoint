@@ -1,12 +1,11 @@
 #!/usr/bin/bash
 # Entrypoint of the runner container (bind-mounted by github-runner@.container). The official runner image ships the Docker
 # static binaries (dockerd, docker, runc) but no daemon is running: start one, so jobs can use `docker`, then run the runner.
-# The image has no iptables, so the daemon runs without it: containers on the default bridge have no NAT (no outbound network);
-# use `--network host` for a container that needs the network.
+# The image has no iptables either: /usr/local/sbin holds wrappers that run the host's (see fw/firewall-wrapper).
 set -euo pipefail
 
 # shellcheck disable=SC2024 # the log is the runner user's own file in /tmp, on purpose
-sudo -n dockerd --host=unix:///var/run/docker.sock --group=docker --iptables=false --ip6tables=false >/tmp/dockerd.log 2>&1 &
+sudo -n dockerd --host=unix:///var/run/docker.sock --group=docker >/tmp/dockerd.log 2>&1 &
 
 for _ in $(seq 1 60); do
     docker info >/dev/null 2>&1 && break

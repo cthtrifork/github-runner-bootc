@@ -5,7 +5,7 @@ FROM quay.io/fedora/fedora-bootc:45
 
 RUN dnf -y install --setopt=install_weak_deps=False \
         podman skopeo netavark aardvark-dns passt fuse-overlayfs crun \
-        jq curl openssl bash git-core rsync xfsprogs \
+        jq curl openssl bash git-core rsync xfsprogs iptables-nft \
         chrony NetworkManager openssh-server \
         linux-firmware microcode_ctl smartmontools lm_sensors qemu-guest-agent \
     && dnf clean all

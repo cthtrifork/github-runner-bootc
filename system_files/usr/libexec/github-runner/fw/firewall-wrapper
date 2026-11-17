@@ -1,0 +1,6 @@
+#!/usr/bin/bash
+# Mounted over /usr/local/sbin of the runner container as iptables, iptables-save, iptables-restore and the ip6 ones. The
+# official runner image has no iptables, and Docker's bridge network needs it for its NAT rules. This runs the host's
+# binary in the host's mount namespace (the container shares the host PID namespace); the network namespace stays the
+# container's, so the rules land where dockerd's bridge is.
+exec nsenter --mount=/proc/1/ns/mnt -- "/usr/sbin/${0##*/}" "$@"

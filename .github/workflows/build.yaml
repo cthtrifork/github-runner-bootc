@@ -552,6 +552,9 @@ jobs:
       - name: Docker works inside the runner
         run: docker run --rm hello-world
 
+      - name: Containers have a network
+        run: docker run --rm alpine:3 wget -q --spider https://github.com
+
   # Every build of main (a merge, the weekly schedule, a manual run) publishes a release named like the image tag, with
   # notes drafted from the merged pull request titles.
   release:
