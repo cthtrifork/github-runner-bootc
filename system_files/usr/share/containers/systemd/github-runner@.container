@@ -53,10 +53,16 @@ ExecStartPre=/usr/libexec/github-runner/prepare-instance %i
 ExecStartPre=/usr/libexec/github-runner/mint-jitconfig %i
 # NAT for the Docker bridges in the container (the official image has no iptables)
 ExecStartPost=/usr/libexec/github-runner/docker-nat %i
+# the container started, so the JIT config was minted: reset the restart back-off
+ExecStartPost=-/usr/bin/systemd-notify RESTART_RESET=1
 ExecStopPost=/usr/bin/rm -f /run/github-runner/%i.env
 # the runner exits after one job: a restart is the normal cycle
 Restart=always
 RestartSec=15s
+# a persistent failure (no route to GitHub, a rejected App) backs off from 15 s to 5 min instead of hammering the API; a
+# successful start resets the counter (RESTART_RESET below), otherwise the normal cycle would back off too
+RestartSteps=5
+RestartMaxDelaySec=5min
 TimeoutStartSec=300
 
 [Install]
