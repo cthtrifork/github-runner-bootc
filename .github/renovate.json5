@@ -83,6 +83,12 @@
       "recreateWhen": "always",
     },
     {
+      // the runner image is tagged <runner version>-<YYYYMMDD>.<iteration> (built in talos-gitops); the rule above must not hide those tags
+      matchPackageNames: ['ghcr.io/cthtrifork/talos-gitops/github-actions-runner'],
+      extractVersion: '^(?<version>.+)$',
+      versioning: 'regex:^(?<major>\\d+)\\.(?<minor>\\d+)\\.(?<patch>\\d+)-(?<build>\\d+)\\.(?<revision>\\d+)$',
+    },
+    {
       // Renovate itself (the action and the version pin) moves in one PR and automerges every update type
       matchPackageNames: ['renovate', 'renovatebot/github-action'],
       automerge: true,

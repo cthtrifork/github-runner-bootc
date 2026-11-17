@@ -52,6 +52,9 @@ jobs:
       contents: read
       packages: read # the revision label of the published images
     outputs:
+      # <runner version>-<YYYYMMDD>.<iteration>: the tag of both images of a release, and the release name
+      version: ${{ steps.version.outputs.version }}
+      runner_version: ${{ steps.version.outputs.runner_version }}
       build: ${{ (github.event_name == 'push' && (steps.gate.outputs.build == 'true' || steps.since_default.outputs.any_changed == 'true' || steps.since_offline.outputs.any_changed == 'true')) || (github.event_name != 'push' && steps.gate.outputs.build == 'true' && (github.event_name != 'pull_request' || steps.changes.outputs.image_any_changed == 'true' || steps.changes.outputs.ci_any_changed == 'true')) }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -73,6 +76,15 @@ jobs:
               - .github/workflows/build.yaml
               - .github/actions/**
               - .github/scripts/**
+
+      - name: Release version
+        id: version
+        run: .github/scripts/release-version.sh
+        env:
+          IMAGE: ghcr.io/${{ github.repository }}
+          OFFLINE_IMAGE: ghcr.io/${{ github.repository_owner }}/offline-${{ github.event.repository.name }}
+          ACTOR: ${{ github.actor }}
+          TOKEN: ${{ github.token }}
 
       - name: Gate
         id: gate
@@ -129,7 +141,7 @@ jobs:
     permissions:
       contents: read
     outputs:
-      version: ${{ steps.meta.outputs.version }}
+      version: ${{ needs.gate.outputs.version }}
       tag: ${{ env.TAG }}
       tier: ${{ env.TIER }}
       pushed: ${{ env.PUSH }}
@@ -149,12 +161,13 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=main-{{date 'YYYYMMDD'}}-${{ github.run_number }},enable={{is_default_branch}}
+            type=raw,value=${{ needs.gate.outputs.version }},enable={{is_default_branch}}
             type=raw,value=${{ env.TAG }}
             type=raw,value=latest,enable={{is_default_branch}}
           labels: |
             containers.bootc=1
             org.opencontainers.image.licenses=Apache-2.0
+            org.opencontainers.image.runner-version=${{ needs.gate.outputs.runner_version }}
 
       - name: Build and rechunk
         uses: ./.github/actions/build-chunked-image
@@ -181,7 +194,7 @@ jobs:
   # settings put required reviewers and a branch rule: `publish` for main and the weekly run, `publish-pr` for pull requests.
   publish:
     name: Publish ${{ matrix.variant }} image
-    needs: build
+    needs: [gate, build]
     if: ${{ needs.build.outputs.pushed == 'true' }}
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -226,7 +239,7 @@ jobs:
         with:
           images: ${{ env.IMAGE }}
           tags: |
-            type=raw,value=main-{{date 'YYYYMMDD'}}-${{ github.run_number }},enable={{is_default_branch}}
+            type=raw,value=${{ needs.gate.outputs.version }},enable={{is_default_branch}}
             type=raw,value=${{ env.TAG }}
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -585,3 +598,18 @@ jobs:
             printf '\n[SBOM and build provenance](%s/%s/attestations)\n' "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY"
           } > notes.md
           gh release edit "$TAG" --notes-file notes.md
+
+  # The installer ISO of the release: the versioned file first, then the stable github-runner-latest.iso. It waits for the
+  # release, so a failed build or release leaves the stable URL where it was.
+  iso:
+    name: Installer ISO
+    needs: [build, release]
+    if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.pushed == 'true' }}
+    uses: ./.github/workflows/create-iso.yaml
+    permissions:
+      contents: read
+      packages: read # pull the image
+    with:
+      tag: ${{ needs.build.outputs.version }}
+      variant: default
+      refresh_latest: true

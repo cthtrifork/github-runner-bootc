@@ -6,7 +6,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to install (latest, main-<date>-<n>, pr-<n>)"
+        description: "Image tag to install (latest, <runner version>-<date>.<n>, pr-<n>)"
         required: true
         default: latest
         type: string

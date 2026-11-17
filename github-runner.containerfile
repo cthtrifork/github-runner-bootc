@@ -16,7 +16,7 @@ RUN cp /usr/share/dnf5/repos.d/fedora.repo /usr/share/dnf5/repos.d/fedora-update
 # Embedded as an OCI directory (a plain copy, no privileges needed) before anything that changes often, so updates reuse
 # its large layer. The tag must equal the Image= line of github-runner@.container (Renovate bumps both together, see .github/renovate.json5).
 ARG RUNNER_IMAGE=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
-ARG RUNNER_IMAGE_TAG=v0.13.0 # renovate: datasource=docker depName=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
+ARG RUNNER_IMAGE_TAG=2.338.2-20261115.5 # renovate: datasource=docker depName=ghcr.io/cthtrifork/talos-gitops/github-actions-runner
 ARG EMBED_RUNNER_IMAGE=false
 RUN mkdir -p /usr/share/github-runner \
     && if [ "${EMBED_RUNNER_IMAGE}" = true ]; then \
@@ -25,7 +25,7 @@ RUN mkdir -p /usr/share/github-runner \
        fi
 
 RUN { \
-      echo "VARIANT=\"GitHub runner bootc OS$([ "${EMBED_RUNNER_IMAGE}" = true ] && echo ' (offline)')\""; \
+      echo "VARIANT=\"GitHub runner bootc OS, runner ${RUNNER_IMAGE_TAG%%-*}$([ "${EMBED_RUNNER_IMAGE}" = true ] && echo ' (offline)')\""; \
       echo 'VARIANT_ID=com.github.cthtrifork.github-runner-bootc'; \
     } >> /usr/lib/os-release
 

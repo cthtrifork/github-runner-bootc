@@ -51,7 +51,9 @@ flowchart LR
 ## Use it
 
 1. **Install:** write the raw disk image to the disk with `dd`, or run `bootc switch` to one of the images above on a
-   host that already runs bootc. An installer ISO is experimental (see #20 and [Build a disk image yourself](#build-a-disk-image-yourself)).
+   host that already runs bootc. An installer ISO is experimental (see #20 and [Build a disk image yourself](#build-a-disk-image-yourself)); every release
+   publishes one at a stable URL, `https://shared-files.portableinfo.cloud/github-runner-latest.iso`, and keeps the versioned
+   `github-runner-<version>.iso` next to it.
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
    ```
@@ -96,6 +98,13 @@ Both images are public, so you can build the disk instead of downloading one. Yo
 
 This is how `create-disk-image.yaml` builds it. An installer ISO (experimental, see #20) is built by `create-iso.yaml` with
 [bootc-image-builder](https://github.com/osbuild/image-builder) and `iso.toml`: `--type iso --rootfs xfs --config iso.toml`.
+
+## Versions
+
+Both images carry the same tag, `<runner version>-<YYYYMMDD>.<iteration>`, e.g. `2.338.2-20261115.5`: the GitHub Actions runner
+inside the runner image (not the OS image version), the UTC build date, and the build of that day. Versioned tags are never
+moved; `latest` is the newest release of each image. The runner version is also the image label
+`org.opencontainers.image.runner-version` and shows in `/usr/lib/os-release` (`VARIANT`, see `bootc status`).
 
 ## Security
 

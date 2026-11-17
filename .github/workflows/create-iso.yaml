@@ -1,13 +1,16 @@
 name: Create ISO
 
-# Builds an installer ISO of a published image with bootc-image-builder. A manual run on main uploads it to the file
-# server of talos-gitops (public downloads from Cloudflare R2) in a separate job. The `iso` PR label instead builds an ISO with an unattended kickstart, installs it in QEMU and runs the system
-# tests on the installed disk; the PR image must exist already (labels `push` or `e2e` publish it).
+# Builds an installer ISO of a published image with bootc-image-builder. A manual run on main, and the release in
+# build.yaml (which calls this workflow), upload it to the file server of talos-gitops (public downloads from Cloudflare
+# R2) in a separate job: a release uploads `github-runner-<version>.iso` and then refreshes `github-runner-latest.iso`,
+# so a failed build never moves the stable URL. The `iso` PR label instead builds an ISO with an unattended kickstart,
+# installs it in QEMU and runs the system tests on the installed disk; the PR image must exist already (labels `push`
+# or `e2e` publish it).
 on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to install (latest, main-<date>-<n>, pr-<n>)"
+        description: "Image tag to install (latest, <runner version>-<date>.<n>, pr-<n>)"
         required: true
         default: latest
         type: string
@@ -16,6 +19,21 @@ on:
         type: choice
         options: [default, offline]
         default: default
+      refresh_latest:
+        description: "Also replace github-runner-latest.iso (a release does; tag it with a release version)"
+        type: boolean
+        default: false
+  workflow_call:
+    inputs:
+      tag:
+        required: true
+        type: string
+      variant:
+        type: string
+        default: default
+      refresh_latest:
+        type: boolean
+        default: false
   pull_request:
     types: [labeled]
     branches: [main]
@@ -31,7 +49,7 @@ jobs:
   iso:
     name: ISO
     # other labels and forks start nothing
-    if: ${{ github.event_name == 'workflow_dispatch' || (github.event.label.name == 'iso' && github.event.pull_request.head.repo.fork != true) }}
+    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'iso' && github.event.pull_request.head.repo.fork != true) }}
     # pinned: ubuntu-latest (26.04) breaks osbuild's /dev mount
     runs-on: ubuntu-24.04
     timeout-minutes: 90
@@ -106,7 +124,7 @@ jobs:
         run: tests/vm-stop.sh iso && tail -n 100 out/journal/iso.log
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
         with:
           name: iso
           path: ${{ steps.bib.outputs.output-path }}
@@ -121,7 +139,7 @@ jobs:
   upload:
     name: Upload to the file server
     needs: iso
-    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
     runs-on: arc-files-bootc
     timeout-minutes: 60
     environment: file-upload
@@ -135,13 +153,20 @@ jobs:
       - name: Upload
         env:
           TAG: ${{ needs.iso.outputs.tag }}
+          REFRESH_LATEST: ${{ inputs.refresh_latest }}
         run: | #sh
           set -euo pipefail
           [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "::error::bad tag"; exit 1; }
           echo "::add-mask::$FILESERVER_TOKEN"
           file="$(ls out/*)"
-          name="github-runner-${TAG}-$(date -u +%Y%m%d).iso"
-          curl --fail --retry 3 --max-time 3600 -T "$file" -H "Authorization: Bearer $FILESERVER_TOKEN" \
-            -H "X-Content-SHA256: $(sha256sum "$file" | cut -d' ' -f1)" \
-            "$FILESERVER_URL/v1/files/$name?visibility=public"
+          # a release tag already carries the date; any other tag gets one so a manual run never replaces the stable name
+          if [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}\.[0-9]+$ ]]; then name="github-runner-${TAG}.iso"; else name="github-runner-${TAG}-$(date -u +%Y%m%d).iso"; fi
+          sha="$(sha256sum "$file" | cut -d' ' -f1)"
+          put() { curl --fail --retry 3 --max-time 3600 -T "$file" -H "Authorization: Bearer $FILESERVER_TOKEN" -H "X-Content-SHA256: $sha" "$FILESERVER_URL/v1/files/$1?visibility=public"; }
+          put "$name"
           echo "Uploaded \`$name\` (public)" >> "$GITHUB_STEP_SUMMARY"
+          # only after the versioned file is in place, and only for a release version
+          if [[ "$REFRESH_LATEST" == true && "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}\.[0-9]+$ ]]; then
+            put github-runner-latest.iso
+            echo "Refreshed \`github-runner-latest.iso\` to \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
+          fi

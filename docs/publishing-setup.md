@@ -30,7 +30,7 @@ add the branch rule `main`. A reviewer would add a click but no protection: a PR
   public and your cluster runner takes its jobs).
 - **Packages** > each package > **Manage Actions access**: only this repository has **Write**.
 
-GitHub cannot protect `latest` and `main-*` package tags. The `push` label (write access only) and the `main`-only `publish` environment guard
+GitHub cannot protect `latest` and the release package tags. The `push` label (write access only) and the `main`-only `publish` environment guard
 them. Keep write access to the repository to yourself.
 
 ## 4. First runs
