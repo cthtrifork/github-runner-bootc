@@ -60,6 +60,17 @@ The test builds the ISO with an unattended kickstart (`tests/iso-test.toml.in`: 
 root, `poweroff`), installs it into an empty disk with QEMU and OVMF (`tests/iso-install.sh`), boots the installed disk
 and runs `tests/system-test.sh`. The ISO that is published is the interactive one (`iso.toml`), which cannot be scripted.
 
+## Publishing and downloads
+
+- `build` has read-only permissions and runs the pull request's own build action. It hands the rechunked image to
+  `publish` as an artifact. `publish` is the only job that can write packages and attestations; it runs no code from the
+  checkout. It runs in the environment `publish` (main, the weekly run) or `publish-pr` (a labelled PR).
+- The environments and repository settings that make this hold are not in the code: see [publishing-setup.md](publishing-setup.md).
+- Disk images and ISOs: the build job has no secrets. A manual run on `main` passes the file as an artifact to the `upload`
+  job, which runs on the talos-gitops scale set `arc-files-bootc` (environment `file-upload`, branch `main`) and PUTs it,
+  public, to the file server; Cloudflare R2 serves it. The token is the runner's own `FILESERVER_TOKEN`, not a repository secret.
+- Verify a release by identity: `gh attestation verify oci://<image>@<digest> -R cthtrifork/github-runner-bootc --signer-workflow cthtrifork/github-runner-bootc/.github/workflows/build.yaml --source-ref refs/heads/main`
+
 ## Lessons
 
 - A VM must be shut down with `poweroff`, not by killing QEMU: the loaded runner image is several GiB that have to reach

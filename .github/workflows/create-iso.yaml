@@ -1,8 +1,7 @@
 name: Create ISO
 
-# Builds an installer ISO of a published image with bootc-image-builder. A manual run uploads it to Azure blob storage
-# (secret AZURE_STORAGE_CONNECTION_STRING, variable AZURE_STORAGE_CONTAINER) and skips the upload while the secret is
-# not set. The `iso` PR label instead builds an ISO with an unattended kickstart, installs it in QEMU and runs the system
+# Builds an installer ISO of a published image with bootc-image-builder. A manual run on main uploads it to the file
+# server of talos-gitops (public downloads from Cloudflare R2) in a separate job. The `iso` PR label instead builds an ISO with an unattended kickstart, installs it in QEMU and runs the system
 # tests on the installed disk; the PR image must exist already (labels `push` or `e2e` publish it).
 on:
   workflow_dispatch:
@@ -39,11 +38,11 @@ jobs:
     permissions:
       contents: read
       packages: read # pull the image
+    outputs:
+      tag: ${{ env.TAG }}
     env:
       IMAGE_FULL: ${{ inputs.variant == 'offline' && format('ghcr.io/{0}/offline-{1}', github.repository_owner, github.event.repository.name) || format('ghcr.io/{0}', github.repository) }}
       TAG: ${{ inputs.tag || format('pr-{0}', github.event.pull_request.number) }}
-      # only a flag: the secret itself is passed to the upload step alone, never to PR-modified or third-party steps
-      HAVE_AZURE: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING != '' }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -106,14 +105,43 @@ jobs:
         if: ${{ always() && github.event_name == 'pull_request' }}
         run: tests/vm-stop.sh iso && tail -n 100 out/journal/iso.log
 
-      - name: Upload to Azure blob storage
-        if: ${{ github.event_name == 'workflow_dispatch' && env.HAVE_AZURE == 'true' }}
-        run: az storage blob upload --container-name "$AZURE_STORAGE_CONTAINER" --file "$ISO" --name "github-runner-${TAG}-$(date -u +%Y%m%d).iso" --overwrite true
-        env:
-          ISO: ${{ steps.bib.outputs.output-path }}
-          AZURE_STORAGE_CONTAINER: ${{ vars.AZURE_STORAGE_CONTAINER }}
-          AZURE_STORAGE_CONNECTION_STRING: ${{ secrets.AZURE_STORAGE_CONNECTION_STRING }}
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+        with:
+          name: iso
+          path: ${{ steps.bib.outputs.output-path }}
+          compression-level: 0
+          retention-days: 1
+          if-no-files-found: error
 
-      - name: Upload skipped
-        if: ${{ github.event_name == 'workflow_dispatch' && env.HAVE_AZURE != 'true' }}
-        run: echo "::notice::AZURE_STORAGE_CONNECTION_STRING is not set, the ISO was built but not uploaded"
+  # Only this job holds the fileserver token (FILESERVER_TOKEN is in the environment of the runner pod, never a repository
+  # secret), and it runs nothing but curl on the file the job above built. It is limited to a manual run on main and to
+  # the protected environment `file-upload`. The runner is the talos-gitops scale set `arc-files-bootc`: the upload API
+  # is cluster-internal. The file is served from the public download host (Cloudflare R2).
+  upload:
+    name: Upload to the file server
+    needs: iso
+    if: ${{ github.event_name == 'workflow_dispatch' && github.ref == 'refs/heads/main' }}
+    runs-on: arc-files-bootc
+    timeout-minutes: 60
+    environment: file-upload
+    permissions: {}
+    steps:
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: iso
+          path: out
+
+      - name: Upload
+        env:
+          TAG: ${{ needs.iso.outputs.tag }}
+        run: | #sh
+          set -euo pipefail
+          [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "::error::bad tag"; exit 1; }
+          echo "::add-mask::$FILESERVER_TOKEN"
+          file="$(ls out/*)"
+          name="github-runner-${TAG}-$(date -u +%Y%m%d).iso"
+          curl --fail --retry 3 --max-time 3600 -T "$file" -H "Authorization: Bearer $FILESERVER_TOKEN" \
+            -H "X-Content-SHA256: $(sha256sum "$file" | cut -d' ' -f1)" \
+            "$FILESERVER_URL/v1/files/$name?visibility=public"
+          echo "Uploaded \`$name\` (public)" >> "$GITHUB_STEP_SUMMARY"
