@@ -159,6 +159,8 @@ jobs:
           set -euo pipefail
           [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "::error::bad tag"; exit 1; }
           echo "::add-mask::$FILESERVER_TOKEN"
+          # in-cluster Service of the file server; the scale set sets it, this is the same address as a fallback
+          FILESERVER_URL="${FILESERVER_URL:-http://fileserver-upload.fileserver-system.svc:8082}"
           file="$(ls out/*)"
           # the default image keeps the plain name; the offline image has `offline` in it
           prefix=github-runner; [[ "$VARIANT" == offline ]] && prefix=github-runner-offline

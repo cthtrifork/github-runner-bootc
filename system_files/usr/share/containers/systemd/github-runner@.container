@@ -17,8 +17,8 @@ Pull=never
 ContainerName=github-runner-%i
 # starts dockerd, then the runner (the official image has Docker's binaries but runs no daemon)
 Exec=/entrypoint
-User=1001
-Group=1001
+# by name, not 1001:1001: that form skips the image's groups, and `runner` needs `sudo` (NOPASSWD) and `docker`
+User=runner
 # ACTIONS_RUNNER_INPUT_JITCONFIG, written by mint-jitconfig before every start
 EnvironmentFile=/run/github-runner/%i.env
 Environment=STORAGE_DRIVER=overlay

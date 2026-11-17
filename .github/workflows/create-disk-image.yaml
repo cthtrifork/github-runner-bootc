@@ -129,6 +129,8 @@ jobs:
           set -euo pipefail
           [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "::error::bad tag"; exit 1; }
           echo "::add-mask::$FILESERVER_TOKEN"
+          # in-cluster Service of the file server; the scale set sets it, this is the same address as a fallback
+          FILESERVER_URL="${FILESERVER_URL:-http://fileserver-upload.fileserver-system.svc:8082}"
           file="$(ls out/*)"
           name="github-runner-${TAG}-$(date -u +%Y%m%d).raw.zst"
           curl --fail --retry 3 --max-time 3600 -T "$file" -H "Authorization: Bearer $FILESERVER_TOKEN" \

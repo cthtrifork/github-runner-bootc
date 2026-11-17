@@ -550,7 +550,7 @@ jobs:
         run: id && uname -a && docker info --format '{{.ServerVersion}} {{.Driver}}'
 
       - name: Docker works inside the runner
-        run: printf 'FROM scratch\nCOPY hello /hello\n' > Dockerfile && echo hello > hello && docker build -t live-test:1 . && docker images live-test
+        run: docker run --rm hello-world
 
   # Every build of main (a merge, the weekly schedule, a manual run) publishes a release named like the image tag, with
   # notes drafted from the merged pull request titles.
