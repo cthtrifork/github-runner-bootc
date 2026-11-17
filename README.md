@@ -119,8 +119,11 @@ Because a job is root on the host, anything on the host is in reach of a job, so
 - **Verify what you boot.** Pin the images by digest and enforce signatures with `/etc/containers/policy.json` and
   `registries.d` (the releases carry build provenance attestations, see `gh attestation verify`); updates are applied
   nightly without a human in the loop.
-- Each runner container has a process limit (`--pids-limit`); set `Memory=` and `CPUQuota` in
-  `/etc/containers/systemd/github-runner@.container.d/10-site.conf` to fit the host.
+- **Resource limits.** Each runner container has a process limit (`--pids-limit=8192`). `github-runner-seed-app` also
+  writes `/etc/containers/systemd/github-runner@.container.d/20-limits.conf` once, with `MemoryMax=` (85% of the memory)
+  and `CPUQuota=` (all CPUs) divided by `--instances`; edit it to fit the host. `--disk-quota-gb N` caps each
+  instance's `/var/lib/github-runner/<n>` with an xfs project quota (the image boots with `rootflags=prjquota`; an
+  existing install needs one reboot into it). Without it only free space is checked when an instance starts.
 
 ## Contributing
 

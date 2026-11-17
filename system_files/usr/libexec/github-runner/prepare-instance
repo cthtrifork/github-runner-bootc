@@ -19,6 +19,19 @@ install -d -m 0755 -o 1001 -g 1001 "$base/work" "$base/rootless" "$base/cache" "
 install -d -m 1777 "$base/var-tmp"
 install -d -m 0755 "$base/containers"
 
+# Optional per-instance disk quota (DISK_QUOTA_GB in /etc/github-runner/config): an xfs project quota on the instance
+# directory, so one job cannot fill /var for every instance. Needs the root filesystem mounted with prjquota (rootflags).
+quota_gb="$(sed -n 's/^DISK_QUOTA_GB=//p' /etc/github-runner/config 2>/dev/null | tail -n1 || true)"
+if [[ "${quota_gb:-0}" =~ ^[1-9][0-9]*$ ]]; then
+    mnt="$(findmnt -n -o TARGET --target "$base")"
+    proj=$((100000 + inst))
+    if ! { xfs_quota -x -c "project -s -p $base $proj" "$mnt" >/dev/null &&
+        xfs_quota -x -c "limit -p bhard=${quota_gb}g $proj" "$mnt"; }; then
+        echo "Cannot set the ${quota_gb}G disk quota on $base: $mnt needs the xfs prjquota mount option (reboot into an image that has rootflags=prjquota, or unset DISK_QUOTA_GB)" >&2
+        exit 1
+    fi
+fi
+
 # a full /var fails jobs in confusing ways: stop early with a clear message
 min_free_gb="$(sed -n 's/^MIN_FREE_GB=//p' /etc/github-runner/config 2>/dev/null | tail -n1 || true)"
 min_free_gb="${min_free_gb:-10}"
