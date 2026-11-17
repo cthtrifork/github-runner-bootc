@@ -1,5 +1,11 @@
 # github-runner-bootc
 
+[![Build](https://github.com/cthtrifork/github-runner-bootc/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/cthtrifork/github-runner-bootc/actions/workflows/build.yaml)
+[![Lint](https://github.com/cthtrifork/github-runner-bootc/actions/workflows/lint.yaml/badge.svg?branch=main)](https://github.com/cthtrifork/github-runner-bootc/actions/workflows/lint.yaml)
+[![Release](https://img.shields.io/github/v/release/cthtrifork/github-runner-bootc?display_name=tag&label=release)](https://github.com/cthtrifork/github-runner-bootc/releases/latest)
+[![Released](https://img.shields.io/github/release-date/cthtrifork/github-runner-bootc?label=released)](https://github.com/cthtrifork/github-runner-bootc/releases/latest)
+[![Last commit](https://img.shields.io/github/last-commit/cthtrifork/github-runner-bootc/main?label=last%20commit)](https://github.com/cthtrifork/github-runner-bootc/commits/main)
+
 A [bootc](https://containers.github.io/bootc/) image (Fedora 45, x86_64) that turns a VM or a bare-metal host into
 ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh container from the
 [ARC runner image](https://github.com/cthtrifork/talos-gitops).
