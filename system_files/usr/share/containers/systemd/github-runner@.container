@@ -60,7 +60,7 @@ ExecStopPost=/usr/bin/rm -f /run/github-runner/%i.env
 Restart=always
 RestartSec=15s
 # a persistent failure (no route to GitHub, a rejected App) backs off from 15 s to 5 min instead of hammering the API; a
-# successful start resets the counter (RESTART_RESET below), otherwise the normal cycle would back off too
+# successful start resets the counter (RESTART_RESET above), otherwise the normal cycle would back off too
 RestartSteps=5
 RestartMaxDelaySec=5min
 TimeoutStartSec=300
