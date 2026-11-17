@@ -32,6 +32,9 @@ env:
   TIER: ${{ (github.event_name == 'workflow_dispatch' && inputs.tier) || (contains(github.event.pull_request.labels.*.name, 'e2e-live') && 'e2e-live') || (contains(github.event.pull_request.labels.*.name, 'e2e') && 'e2e') || 'none' }}
   # a PR image is pushed only when a label asks for it, never from a fork
   PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.fork != true && (contains(github.event.pull_request.labels.*.name, 'push') || contains(github.event.pull_request.labels.*.name, 'e2e') || contains(github.event.pull_request.labels.*.name, 'e2e-live'))) }}
+  TRIVY_VERSION: v0.76.2 # renovate: datasource=github-releases depName=aquasecurity/trivy
+  # The DB comes from the cache that trivy-cache.yaml refreshes daily.
+  TRIVY_SKIP_DB_UPDATE: "true"
 
 jobs:
   # A push to main builds, and so releases, only when the image files changed since the commit the published images were
@@ -248,6 +251,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "0"
           timeout: 15m
+          version: ${{ env.TRIVY_VERSION }}
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ github.token }}
