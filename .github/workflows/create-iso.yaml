@@ -151,6 +151,7 @@ jobs:
           [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "::error::bad tag"; exit 1; }
           mkdir -p out
           sudo podman pull -q "$IMAGE_FULL:$TAG"
+          sudo podman pull -q "$BIB_IMAGE"
           # /host-dev is the node's live /dev (see the scale set): osbuild needs the loop devices it creates
           sudo podman run --rm --privileged --pull=never --security-opt label=type:unconfined_t \
             -v /var/lib/containers/storage:/var/lib/containers/storage -v /host-dev:/dev -v /run/udev:/run/udev:ro \
