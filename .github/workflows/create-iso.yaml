@@ -1,9 +1,10 @@
 name: Create ISO
 
-# Builds an installer ISO of a published image with bootc-image-builder. A manual run on main, and the release in
-# build.yaml (which calls this workflow), upload it to the file server of talos-gitops (public downloads from Cloudflare
-# R2) in a separate job: a release uploads `github-runner[-offline]-<version>.iso` and then refreshes `github-runner[-offline]-latest.iso`,
-# so a failed build never moves the stable URL. The `iso` PR label instead builds an ISO with an unattended kickstart,
+# Builds an installer ISO of a published image with bootc-image-builder. A manual run on main and the release in
+# build.yaml (which calls this workflow) build it on the cluster runner `arc-iso-bootc` (talos-gitops) and upload it from
+# there to the file server (public downloads from Cloudflare R2), so the 5 GiB ISO is never downloaded: a release uploads
+# `github-runner[-offline]-<version>.iso` and then refreshes `github-runner[-offline]-latest.iso`, so a failed build never
+# moves the stable URL. The `iso` PR label instead builds an ISO with an unattended kickstart on a GitHub runner,
 # installs it in QEMU and runs the system tests on the installed disk; the PR image must exist already (labels `push`
 # or `e2e` publish it).
 on:
@@ -48,16 +49,14 @@ concurrency:
 jobs:
   iso:
     name: ISO
-    # other labels and forks start nothing
-    if: ${{ github.event_name != 'pull_request' || (github.event.label.name == 'iso' && github.event.pull_request.head.repo.fork != true) }}
+    # the PR test only: other labels and forks start nothing (a manual run or a release builds in `publish`)
+    if: ${{ github.event_name == 'pull_request' && github.event.label.name == 'iso' && github.event.pull_request.head.repo.fork != true }}
     # pinned: ubuntu-latest (26.04) breaks osbuild's /dev mount
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     permissions:
       contents: read
       packages: read # pull the image
-    outputs:
-      tag: ${{ env.TAG }}
     env:
       IMAGE_FULL: ${{ inputs.variant == 'offline' && format('ghcr.io/{0}/offline-{1}', github.repository_owner, github.event.repository.name) || format('ghcr.io/{0}', github.repository) }}
       TAG: ${{ inputs.tag || format('pr-{0}', github.event.pull_request.number) }}
@@ -123,45 +122,51 @@ jobs:
         if: ${{ always() && github.event_name == 'pull_request' }}
         run: tests/vm-stop.sh iso && tail -n 100 out/journal/iso.log
 
-      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
-        if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-        with:
-          name: iso-${{ inputs.variant || 'default' }}
-          path: ${{ steps.bib.outputs.output-path }}
-          compression-level: 0
-          retention-days: 1
-          if-no-files-found: error
-
-  # Only this job holds the fileserver token (FILESERVER_TOKEN is in the environment of the runner pod, never a repository
-  # secret), and it runs nothing but curl on the file the job above built. It is limited to a manual run on main and to
-  # the protected environment `file-upload`. The runner is the talos-gitops scale set `arc-files-bootc`: the upload API
-  # is cluster-internal. The file is served from the public download host (Cloudflare R2).
-  upload:
-    name: Upload to the file server
-    needs: iso
+  # Runs on the cluster runner `arc-iso-bootc` of talos-gitops: privileged, with the file server token in its environment
+  # (FILESERVER_TOKEN, never a repository secret). Only a manual run on main or a release reaches it, and the protected
+  # environment `file-upload` limits it to main. The ISO is built from the published image and uploaded from the same pod.
+  publish:
+    name: Build and upload the ISO
     if: ${{ github.event_name != 'pull_request' && github.ref == 'refs/heads/main' }}
-    runs-on: arc-files-bootc
-    timeout-minutes: 60
+    runs-on: arc-iso-bootc
+    timeout-minutes: 90
     environment: file-upload
-    permissions: {}
+    permissions:
+      contents: read
+    env:
+      IMAGE_FULL: ${{ inputs.variant == 'offline' && format('ghcr.io/{0}/offline-{1}', github.repository_owner, github.event.repository.name) || format('ghcr.io/{0}', github.repository) }}
+      TAG: ${{ inputs.tag }}
+      VARIANT: ${{ inputs.variant || 'default' }}
+      REFRESH_LATEST: ${{ inputs.refresh_latest }}
+      # pinned by digest, bump by hand (Renovate does not read this file for it)
+      BIB_IMAGE: quay.io/centos-bootc/bootc-image-builder@sha256:dab86ee6b46dcade411b37f4e70b07d93b6a06da0dbfec6fe89247a220e0d9f8
     steps:
-      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          name: iso-${{ inputs.variant || 'default' }}
-          path: out
+          persist-credentials: false
 
-      - name: Upload
-        env:
-          TAG: ${{ needs.iso.outputs.tag }}
-          REFRESH_LATEST: ${{ inputs.refresh_latest }}
-          VARIANT: ${{ inputs.variant || 'default' }}
+      - name: Build the ISO
         run: | #sh
           set -euo pipefail
           [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "::error::bad tag"; exit 1; }
+          mkdir -p out
+          sudo podman pull -q "$IMAGE_FULL:$TAG"
+          # /host-dev is the node's live /dev (see the scale set): osbuild needs the loop devices it creates
+          sudo podman run --rm --privileged --pull=never --security-opt label=type:unconfined_t \
+            -v /var/lib/containers/storage:/var/lib/containers/storage -v /host-dev:/dev -v /run/udev:/run/udev:ro \
+            -v "$PWD/iso.toml:/config.toml:ro" -v "$PWD/out:/output" \
+            "$BIB_IMAGE" --type iso --rootfs xfs --config /config.toml --local "$IMAGE_FULL:$TAG"
+          sudo chown -R "$(id -u):$(id -g)" out
+          ls -l out/bootiso/install.iso
+          echo "ISO is $(( $(stat -c %s out/bootiso/install.iso) / 1048576 )) MiB" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload to the file server
+        run: | #sh
+          set -euo pipefail
           echo "::add-mask::$FILESERVER_TOKEN"
           # in-cluster Service of the file server; the scale set sets it, this is the same address as a fallback
           FILESERVER_URL="${FILESERVER_URL:-http://fileserver-upload.fileserver-system.svc:8082}"
-          file="$(ls out/*)"
+          file=out/bootiso/install.iso
           # the default image keeps the plain name; the offline image has `offline` in it
           prefix=github-runner; [[ "$VARIANT" == offline ]] && prefix=github-runner-offline
           # a release tag already carries the date; any other tag gets one so a manual run never replaces the stable name

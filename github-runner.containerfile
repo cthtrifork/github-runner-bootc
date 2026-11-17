@@ -10,8 +10,17 @@ RUN dnf -y install --setopt=install_weak_deps=False \
         linux-firmware microcode_ctl smartmontools lm_sensors qemu-guest-agent \
     && dnf clean all
 
-# Fedora 45 keeps its repositories in /usr/share/dnf5/repos.d; bootc-image-builder reads /etc/yum.repos.d
-RUN cp /usr/share/dnf5/repos.d/fedora.repo /usr/share/dnf5/repos.d/fedora-updates.repo /etc/yum.repos.d/
+# Fedora 45 keeps its repositories in /usr/share/dnf5/repos.d; bootc-image-builder reads /etc/yum.repos.d. They are pinned to
+# one mirror instead of the metalink: the cluster runner that builds the ISO only reaches this host (the egress policy of
+# talos-gitops allows it, and the homeserver-bootc Containerfiles pin the same one). Keep the two in step.
+ARG FEDORA_MIRROR=https://mirrors.dotsrc.org/fedora
+# hadolint ignore=SC2016 # $releasever and $basearch are dnf variables, not shell ones
+RUN for r in fedora:fedora:releases/'$releasever'/Everything/'$basearch'/os updates:fedora-updates:updates/'$releasever'/Everything/'$basearch'; do \
+      id="${r%%:*}"; rest="${r#*:}"; file="${rest%%:*}"; path="${rest#*:}"; \
+      printf '%s\n' "[${id}]" "name=Fedora \$releasever - \$basearch (${id})" "baseurl=${FEDORA_MIRROR}/linux/${path}/" \
+        'enabled=1' 'gpgcheck=1' 'metadata_expire=6h' 'skip_if_unavailable=False' \
+        'gpgkey=file:///etc/pki/rpm-gpg/RPM-GPG-KEY-fedora-$releasever-$basearch' > "/etc/yum.repos.d/${file}.repo"; \
+    done
 
 # Embedded as an OCI directory (a plain copy, no privileges needed) before anything that changes often, so updates reuse
 # its large layer. The tag must equal the Image= line of github-runner@.container (Renovate bumps both together, see .github/renovate.json5).

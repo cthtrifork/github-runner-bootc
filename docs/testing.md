@@ -66,9 +66,11 @@ and runs `tests/system-test.sh`. The ISO that is published is the interactive on
   `publish` as an artifact. `publish` is the only job that can write packages and attestations; it runs no code from the
   checkout. It runs in the environment `publish` (main, the weekly run) or `publish-pr` (a labelled PR).
 - The environments and repository settings that make this hold are not in the code: see [publishing-setup.md](publishing-setup.md).
-- Disk images and ISOs: the build job has no secrets. A manual run on `main` passes the file as an artifact to the `upload`
-  job, which runs on the talos-gitops scale set `arc-files-bootc` (environment `file-upload`, branch `main`) and PUTs it,
-  public, to the file server; Cloudflare R2 serves it. The token is the runner's own `FILESERVER_TOKEN`, not a repository secret.
+- Disk images: the build job has no secrets. A manual run on `main` passes the file as an artifact to the `upload` job, which runs on
+  the talos-gitops scale set `arc-files-bootc` (environment `file-upload`, branch `main`) and PUTs it, public, to the file server;
+  Cloudflare R2 serves it. The token is the runner's own `FILESERVER_TOKEN`, not a repository secret.
+- ISOs: built and uploaded on the privileged scale set `arc-iso-bootc` (`runs-on` of the `publish` job in `create-iso.yaml`), so the 5 GiB
+  ISO is never downloaded. The Containerfile pins the Fedora repos to `mirrors.dotsrc.org`, the only Fedora host the cluster allows.
 - Verify a release by identity: `gh attestation verify oci://<image>@<digest> -R cthtrifork/github-runner-bootc --signer-workflow cthtrifork/github-runner-bootc/.github/workflows/build.yaml --source-ref refs/heads/main`
 
 ## Lessons

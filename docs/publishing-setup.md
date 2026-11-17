@@ -6,10 +6,10 @@ These GitHub settings cannot be set from the code. `cthtrifork` is a personal ac
 
 ```bash
 flux get helmrelease -n arc-runners-system arc-runners-bootc-files
-kubectl -n arc-runners-system get autoscalingrunnerset arc-files-bootc
+kubectl -n arc-runners-system get autoscalingrunnerset arc-files-bootc arc-iso-bootc
 ```
 
-Then check that `arc-files-bootc` is listed under **Settings > Actions > Runners**. If not, read the listener log
+Then check that `arc-files-bootc` and `arc-iso-bootc` are listed under **Settings > Actions > Runners**. If not, read the listener log
 (`kubectl -n arc-systems logs -l actions.github.com/scale-set-name=arc-files-bootc`): `401` means a wrong App ID, installation ID or
 key in `github-auth-bootc-files`; `404` means the App is not installed on this repository or lacks Administration: read and write.
 
