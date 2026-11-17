@@ -238,8 +238,7 @@ jobs:
           done
           echo "digest=$(cat "$RUNNER_TEMP/digest")" >> "$GITHUB_OUTPUT"
 
-      # All CRITICAL/HIGH vulnerabilities, including ones with no fix yet (dnf updateinfo only lists fixed advisories);
-      # report only (the weekly rebuild picks fixes up), so a new CVE in a base package does not turn every PR red.
+      # All CRITICAL/HIGH vulnerabilities, including ones with no fix yet; report only (the weekly rebuild picks fixes up), so a new CVE in a base package does not turn every PR red.
       - name: Trivy scan
         if: ${{ env.PUSH == 'true' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -268,25 +267,6 @@ jobs:
           sarif_file: trivy.sarif
           category: trivy-${{ matrix.variant }}
 
-      # Pending Fedora security advisories for each pushed image (Trivy has no Fedora OS advisories).
-      - name: Pending security updates (dnf updateinfo)
-        if: ${{ env.PUSH == 'true' }}
-        run: | #sh
-          # shellcheck disable=SC2016 # the backticks are markdown
-          if docker run --rm --entrypoint dnf "$IMAGE@$DIGEST" -q updateinfo list --security --refresh \
-            > dnf-security.txt 2> dnf-security.err; then
-            {
-              printf '### Pending security updates in `%s@%s`\n\n```\n' "$IMAGE" "$DIGEST"
-              cat dnf-security.txt
-              printf '```\n'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            cat dnf-security.err
-            echo failed > dnf-security.failed
-          fi
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
-
       - name: Write Trivy comment
         if: ${{ github.event_name == 'pull_request' && env.PUSH == 'true' }}
         env:
@@ -311,23 +291,6 @@ jobs:
               echo "⚠️ **OS packages were NOT scanned:** Trivy has no advisories for Fedora, so only library/language findings are counted."
               echo ""
             fi
-            echo "#### Fedora security updates (dnf updateinfo)"
-            if [[ -f dnf-security.failed ]]; then
-              echo "⚠️ \`dnf updateinfo\` failed; see the job log."
-            else
-              adv=$(grep -c . dnf-security.txt || true)
-              echo "**${adv}** pending security advisories in the image's packages."
-              if [[ "$adv" -gt 0 ]]; then
-                echo ""
-                echo "<details><summary>Advisories</summary>"
-                echo ""
-                echo '```'
-                head -n 50 dnf-security.txt
-                echo '```'
-                echo "</details>"
-              fi
-            fi
-            echo ""
             echo "[Full run](${RUN_URL})"
           } > trivy-comment.md
 
