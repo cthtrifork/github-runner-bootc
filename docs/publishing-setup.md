@@ -14,7 +14,9 @@ Do the steps in order. Replace nothing else: every command uses `-R cthtrifork/g
 
 ```bash
 # the scale set exists and registered with GitHub
-kubectl -n arc-runners-system get autoscalingrunnerset arc-runners-bootc-files
+# (named after runnerScaleSetName, not the HelmRelease; if it is missing, check the HelmRelease first)
+flux get helmrelease -n arc-runners-system arc-runners-bootc-files
+kubectl -n arc-runners-system get autoscalingrunnerset arc-files-bootc
 # the listener pod is running (minRunners is 0, so there is no runner pod until a job is queued)
 kubectl -n arc-systems get pods | grep bootc-files
 kubectl -n arc-systems logs -l actions.github.com/scale-set-name=arc-files-bootc --tail=20
