@@ -12,7 +12,7 @@ jobs:
     name: Clean up PR #${{ github.event.pull_request.number }}
     # a fork's token is read-only
     if: github.event.pull_request.head.repo.full_name == github.repository
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     concurrency:
       group: cleanup-pr-${{ github.event.pull_request.number }}

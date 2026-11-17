@@ -28,7 +28,7 @@ env:
 jobs:
   cleanup:
     name: Cleanup images
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       packages: write # delete package versions
