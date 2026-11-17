@@ -15,14 +15,14 @@ key in `github-auth-bootc-files`; `404` means the App is not installed on this r
 
 ## 2. Environments
 
-**Settings > Environments > New environment**, once per row. For "you approve" tick **Required reviewers**, add yourself and
-untick **Prevent self-review**. For "main only" choose **Selected branches and tags** and add the branch rule `main`.
+**Settings > Environments > New environment**, once per row, no reviewers. For "main only" choose **Selected branches and tags** and
+add the branch rule `main`. A reviewer would add a click but no protection: a PR that edits the workflow can drop the `environment:` line.
 
-| Environment | Used by | Approval | Branches |
-|---|---|---|---|
-| `publish` | pushes to main, weekly rebuild | none | main only |
-| `publish-pr` | PRs labelled `push`, `e2e`, `e2e-live` | you approve | any |
-| `file-upload` | manual disk image / ISO upload | you approve | main only |
+| Environment | Used by | Branches |
+|---|---|---|
+| `publish` | pushes to main, weekly rebuild | main only |
+| `publish-pr` | PRs labelled `push`, `e2e`, `e2e-live` | any |
+| `file-upload` | manual disk image / ISO upload | main only |
 
 ## 3. Repository settings
 
@@ -30,15 +30,13 @@ untick **Prevent self-review**. For "main only" choose **Selected branches and t
   public and your cluster runner takes its jobs).
 - **Packages** > each package > **Manage Actions access**: only this repository has **Write**.
 
-GitHub cannot protect `latest` and `main-*` package tags. The `publish-pr` approval and the `main`-only `publish` environment guard
+GitHub cannot protect `latest` and `main-*` package tags. The `push` label (write access only) and the `main`-only `publish` environment guard
 them. Keep write access to the repository to yourself.
 
 ## 4. First runs
 
-- **PR image**: add the label `push`. When **Build** is done, the **Publish** job waits: **Review deployments** > `publish-pr` >
-  **Approve and deploy**.
-- **Upload**: **Actions > Create disk image > Run workflow** on `main` (tag `latest`, variant `offline`, your public SSH key). When
-  the disk job is done, approve `file-upload` the same way. The first run starts the runner pod (about a minute). The file is then at
+- **PR image**: add the label `push`.
+- **Upload**: **Actions > Create disk image > Run workflow** on `main` (tag `latest`, variant `offline`, your public SSH key). The first run starts the runner pod (about a minute). The file is then at
   `https://shared-files.portableinfo.cloud/<name>` (the name is in the run summary).
 
 | Symptom | Cause |
