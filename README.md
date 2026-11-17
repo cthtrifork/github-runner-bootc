@@ -34,8 +34,8 @@ one artifact:
 
 - **One image, one lifecycle.** The OS, the runner and its tooling are built, tested and versioned together. The host
   updates itself atomically and rolls back if something breaks, so there is no separate OS patching or runner upgrade.
-- **Clean by default.** Every job runs in a fresh container, so nothing leaks from one job to the next and the host does
-  not accumulate state.
+- **Clean by default.** Every job runs in a fresh container and its workspace is wiped, so the host does not accumulate
+  state. Image storage and caches are kept between jobs for speed unless you seed with `--isolate-jobs` (see Security).
 - **Nothing to rebuild by hand.** A new host is a disk image plus one seed command; a broken host is replaced, not repaired.
 - **Airgap friendly.** The offline image ships the runner image inside the OS image, so the host needs no registry, only GitHub.
 - **No secrets in the image.** The GitHub App key is seeded at first boot and never baked in.
@@ -112,7 +112,8 @@ Because a job is root on the host, anything on the host is in reach of a job, so
   you do not trust ever ran.
 - **Jobs share storage by default.** The image storage and caches of an instance survive between its jobs, so a hostile
   job can poison them for the next one. `github-runner-seed-app --isolate-jobs` wipes them before every job (slower:
-  images are pulled again). Otherwise attach each host to one trust domain only.
+  images are pulled again; a pull-through registry mirror in `/etc/containers/registries.conf.d/` offsets the cost).
+  Otherwise attach each host to one trust domain only.
 - **Restrict the network.** The host has no firewall: a job reaches the LAN, the host's services and any cloud metadata
   endpoint. Put the host on its own VLAN or add egress rules that allow GitHub, your registries and nothing else.
 - **Verify what you boot.** Pin the images by digest and enforce signatures with `/etc/containers/policy.json` and
