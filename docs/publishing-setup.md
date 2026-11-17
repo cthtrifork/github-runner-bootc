@@ -35,33 +35,26 @@ GitHub shows the scale set under the repository: **Settings > Actions > Runners*
 An environment is where GitHub enforces a branch rule and an approval. `build.yaml` uses `publish` (main and the weekly run) and
 `publish-pr` (a pull request with a `push`, `e2e` or `e2e-live` label); the upload jobs use `file-upload`.
 
-```bash
-repo=cthtrifork/github-runner-bootc
-me="$(gh api user --jq .id)"
+Open <https://github.com/cthtrifork/github-runner-bootc/settings/environments> (**Settings > Environments**). An existing
+`copilot` environment is not ours: leave it. Repeat the following for each row of the table.
 
-# publish: only main may deploy. No reviewer by default: a reviewer here also gates every merge and the weekly rebuild.
-gh api -X PUT "repos/$repo/environments/publish" --input - <<'JSON'
-{"deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
-JSON
-gh api -X POST "repos/$repo/environments/publish/deployment-branch-policies" -f name=main -f type=branch
+1. Click **New environment**, type the name, click **Configure environment**.
+2. **Required reviewers**: tick it, search for your own user, click **Save protection rules** (rows marked "you approve").
+3. Untick **Prevent self-review** (you are the only maintainer, so it would block you).
+4. **Deployment branches and tags**: open the dropdown, choose **Selected branches and tags**, click **Add deployment branch or tag
+   rule**, leave the type on *Branch*, enter `main`, click **Add rule** (rows marked "main only").
+5. Leave **Environment secrets** and **variables** empty: nothing in the workflows reads them.
 
-# file-upload: only main, and you approve each upload
-gh api -X PUT "repos/$repo/environments/file-upload" --input - <<JSON
-{"reviewers": [{"type": "User", "id": $me}], "prevent_self_review": false,
- "deployment_branch_policy": {"protected_branches": false, "custom_branch_policies": true}}
-JSON
-gh api -X POST "repos/$repo/environments/file-upload/deployment-branch-policies" -f name=main -f type=branch
+| Environment | Used by | Required reviewer | Deployment branches |
+|---|---|---|---|
+| `publish` | pushes to main and the weekly rebuild | none (a reviewer here would gate every merge and the weekly run) | main only |
+| `publish-pr` | a PR with a `push`, `e2e` or `e2e-live` label | you approve | any branch (a PR can come from any same-repo branch) |
+| `file-upload` | the manual disk image and ISO upload | you approve | main only |
 
-# publish-pr: you approve each PR image push (a PR can come from any same-repo branch, so no branch rule)
-gh api -X PUT "repos/$repo/environments/publish-pr" --input - <<JSON
-{"reviewers": [{"type": "User", "id": $me}], "prevent_self_review": false}
-JSON
+When done, the list shows `publish`, `publish-pr` and `file-upload` (plus `copilot`).
 
-gh api "repos/$repo/environments" --jq '.environments[].name'   # expect publish, publish-pr, file-upload (and copilot)
-```
-
-If you want an approval on every release too, add the same `reviewers` block to `publish`. With a single maintainer the approver is
-yourself, so it is a pause for you to check what is about to be pushed, not a second pair of eyes.
+With a single maintainer the approver is yourself, so a required reviewer is a pause to check what is about to be pushed, not a
+second pair of eyes. To also pause every release, add yourself as required reviewer on `publish`.
 
 ## 3. Repository settings (web UI)
 
@@ -81,22 +74,19 @@ with write access to this repository can still change a workflow on a branch; ke
 
 ## 4. First runs
 
-```bash
-# the PR image: add a label; the publish job pauses for your approval
-gh pr edit <pr> --add-label push
-# approve in the web UI: the run page shows "Review deployments" (publish-pr)
+**The PR image.** Open the PR and add the label `push` (right sidebar > **Labels**). Wait for **Build** to finish: the
+**Publish** job then shows **Waiting** with a **Review deployments** button on the run page. Tick `publish-pr`, click
+**Approve and deploy**.
 
-# the upload: only a manual run on main starts it
-gh workflow run "Create disk image" --ref main -f tag=latest -f variant=offline -f authorized_keys="$(cat ~/.ssh/id_ed25519.pub)"
-gh run watch
-```
+**The upload.** Only a manual run on main starts it:
 
-The `upload` job waits for your approval (`file-upload`), then PUTs the file. The summary shows the name; the public URL is
-`https://shared-files.portableinfo.cloud/<name>`. Check it:
-
-```bash
-curl -fsSI https://shared-files.portableinfo.cloud/<name> | head -5
-```
+1. <https://github.com/cthtrifork/github-runner-bootc/actions/workflows/create-disk-image.yaml> > **Run workflow**.
+2. Branch: `main`. Fill in the tag (`latest`), the variant (`offline`) and your public SSH key (paste the contents of
+   `~/.ssh/id_ed25519.pub`; public keys only) > **Run workflow**.
+3. When the disk job is done, open the run: **Upload to the file server** waits for approval. Click **Review deployments**, tick
+   `file-upload`, **Approve and deploy**. The first run also starts the runner pod (a minute or so).
+4. The job then PUTs the file. The run summary shows the file name; the public URL is
+   `https://shared-files.portableinfo.cloud/<name>`. Open it in a browser: it should start a download.
 
 | Symptom | Cause |
 |---|---|
