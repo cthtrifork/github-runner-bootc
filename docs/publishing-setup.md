@@ -6,10 +6,10 @@ These GitHub settings cannot be set from the code. `cthtrifork` is a personal ac
 
 ```bash
 flux get helmrelease -n arc-runners-system arc-runners-bootc-files
-kubectl -n arc-runners-system get autoscalingrunnerset arc-files-bootc
+kubectl -n arc-runners-system get autoscalingrunnerset arc-files-bootc arc-iso-bootc
 ```
 
-Then check that `arc-files-bootc` is listed under **Settings > Actions > Runners**. If not, read the listener log
+Then check that `arc-files-bootc` and `arc-iso-bootc` are listed under **Settings > Actions > Runners**. If not, read the listener log
 (`kubectl -n arc-systems logs -l actions.github.com/scale-set-name=arc-files-bootc`): `401` means a wrong App ID, installation ID or
 key in `github-auth-bootc-files`; `404` means the App is not installed on this repository or lacks Administration: read and write.
 
@@ -30,7 +30,7 @@ add the branch rule `main`. A reviewer would add a click but no protection: a PR
   public and your cluster runner takes its jobs).
 - **Packages** > each package > **Manage Actions access**: only this repository has **Write**.
 
-GitHub cannot protect `latest` and `main-*` package tags. The `push` label (write access only) and the `main`-only `publish` environment guard
+GitHub cannot protect `latest` and the release package tags. The `push` label (write access only) and the `main`-only `publish` environment guard
 them. Keep write access to the repository to yourself.
 
 ## 4. First runs

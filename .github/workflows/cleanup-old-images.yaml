@@ -28,7 +28,7 @@ env:
 jobs:
   cleanup:
     name: Cleanup images
-    runs-on: ubuntu-slim
+    runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
       packages: write # delete package versions
@@ -48,7 +48,7 @@ jobs:
           token: ${{ github.token }}
           packages: ${{ env.PACKAGE }}
           keep-n-tagged: 0
-          exclude-tags: main,main-*,latest
+          exclude-tags: main,main-*,latest-*,latest
           older-than: 7 days
           dry-run: ${{ env.DRY_RUN == 'true' }}
 
@@ -58,7 +58,7 @@ jobs:
           token: ${{ github.token }}
           packages: ${{ env.PACKAGE }}
           delete-ghost-images: true
-          exclude-tags: main,main-*,latest
+          exclude-tags: main,main-*,latest-*,latest
           dry-run: ${{ env.DRY_RUN == 'true' }}
 
       # younger than 30 days is kept, plus the 5 newest older ones

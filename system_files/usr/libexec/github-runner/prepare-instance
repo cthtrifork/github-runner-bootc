@@ -10,14 +10,14 @@ base="/var/lib/github-runner/$inst"
 # shared by every job of this instance, so a hostile job can poison them for the next one.
 isolate="$(sed -n 's/^ISOLATE_JOBS=//p' /etc/github-runner/config 2>/dev/null | tail -n1 || true)"
 if [[ "${isolate:-0}" == 1 ]]; then
-    rm -rf "${base:?}/containers" "${base:?}/rootless" "${base:?}/cache" "${base:?}/dnf"
+    rm -rf "${base:?}/containers" "${base:?}/rootless" "${base:?}/cache" "${base:?}/dnf" "${base:?}/docker"
 fi
 
 # workspace and scratch are wiped for every job; image storage and caches survive
 rm -rf "${base:?}/work" "${base:?}/var-tmp"
 install -d -m 0755 -o 1001 -g 1001 "$base/work" "$base/rootless" "$base/cache" "$base/dnf"
 install -d -m 1777 "$base/var-tmp"
-install -d -m 0755 "$base/containers"
+install -d -m 0755 "$base/containers" "$base/docker"
 
 # Optional per-instance disk quota (DISK_QUOTA_GB in /etc/github-runner/config): an xfs project quota on the instance
 # directory, so one job cannot fill /var for every instance. Needs the root filesystem mounted with prjquota (rootflags).

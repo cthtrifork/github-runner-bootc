@@ -52,7 +52,7 @@
     },
     {
       // The runner image tag is in github-runner.containerfile and in the Quadlet unit; bump both in one PR.
-      matchPackageNames: ['ghcr.io/cthtrifork/talos-gitops/github-actions-runner'],
+      matchPackageNames: ['ghcr.io/actions/actions-runner'],
       pinDigests: false,
       groupName: 'runner image',
     },

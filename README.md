@@ -1,5 +1,11 @@
 # github-runner-bootc
 
+[![Build](https://github.com/cthtrifork/github-runner-bootc/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/cthtrifork/github-runner-bootc/actions/workflows/build.yaml)
+[![Lint](https://github.com/cthtrifork/github-runner-bootc/actions/workflows/lint.yaml/badge.svg?branch=main)](https://github.com/cthtrifork/github-runner-bootc/actions/workflows/lint.yaml)
+[![Release](https://img.shields.io/github/v/release/cthtrifork/github-runner-bootc?display_name=tag&label=release)](https://github.com/cthtrifork/github-runner-bootc/releases/latest)
+[![Released](https://img.shields.io/github/release-date/cthtrifork/github-runner-bootc?label=released)](https://github.com/cthtrifork/github-runner-bootc/releases/latest)
+[![Last commit](https://img.shields.io/github/last-commit/cthtrifork/github-runner-bootc/main?label=last%20commit)](https://github.com/cthtrifork/github-runner-bootc/commits/main)
+
 A [bootc](https://containers.github.io/bootc/) image (Fedora 45, x86_64) that turns a VM or a bare-metal host into
 ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh container from the
 [ARC runner image](https://github.com/cthtrifork/talos-gitops).
@@ -51,7 +57,9 @@ flowchart LR
 ## Use it
 
 1. **Install:** write the raw disk image to the disk with `dd`, or run `bootc switch` to one of the images above on a
-   host that already runs bootc. An installer ISO is experimental (see #20 and [Build a disk image yourself](#build-a-disk-image-yourself)).
+   host that already runs bootc. An installer ISO is experimental (see #20 and [Build a disk image yourself](#build-a-disk-image-yourself)); every release
+   publishes them at stable URLs, `https://shared-files.portableinfo.cloud/github-runner-latest.iso` (default image) and
+   `.../github-runner-offline-latest.iso` (offline image), and keeps the versioned `github-runner[-offline]-<version>.iso` next to them.
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
    ```
@@ -96,6 +104,14 @@ Both images are public, so you can build the disk instead of downloading one. Yo
 
 This is how `create-disk-image.yaml` builds it. An installer ISO (experimental, see #20) is built by `create-iso.yaml` with
 [bootc-image-builder](https://github.com/osbuild/image-builder) and `iso.toml`: `--type iso --rootfs xfs --config iso.toml`.
+
+## Versions
+
+The runner is the official `ghcr.io/actions/actions-runner` image, unmodified (Ubuntu, passwordless `sudo` for `runner`, no
+podman, buildah or Homebrew tools: a job installs what it needs). Both OS images carry the same tag,
+`latest-<runner version>-<YYYYMMDD>-<revision>`, e.g. `latest-2.338.2-20261115-5`: the runner version (not the OS image version), the UTC build date, and the build of that day. Versioned tags are never
+moved; `latest` is the newest release of each image. The runner version is also the image label
+`org.opencontainers.image.runner-version` and shows in `/usr/lib/os-release` (`VARIANT`, see `bootc status`).
 
 ## Security
 

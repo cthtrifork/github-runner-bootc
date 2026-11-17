@@ -1,0 +1,9 @@
+# Loaded into the network namespace of a runner container by docker-nat (ExecStartPost of github-runner@.service).
+# The official runner image has no iptables, so dockerd runs with --iptables=false and this is the only rule it needs:
+# masquerade what the Docker bridges (172.16.0.0/12) send out of the container's own interface.
+table ip github_runner_docker {
+    chain postrouting {
+        type nat hook postrouting priority srcnat; policy accept;
+        ip saddr 172.16.0.0/12 oifname "eth0" masquerade
+    }
+}
