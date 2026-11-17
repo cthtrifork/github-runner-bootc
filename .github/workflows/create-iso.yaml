@@ -34,7 +34,7 @@ jobs:
     # other labels and forks start nothing
     if: ${{ github.event_name == 'workflow_dispatch' || (github.event.label.name == 'iso' && github.event.pull_request.head.repo.fork != true) }}
     # pinned: ubuntu-latest (26.04) breaks osbuild's /dev mount
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-26.04
     timeout-minutes: 90
     permissions:
       contents: read
