@@ -26,9 +26,9 @@ Environment=BUILDAH_ISOLATION=chroot
 Environment=BUILDAH_LAYERS=true
 Environment=RUNNER_UPDATE_CA_CERTS=1
 
-# The container runs dockerd (see /entrypoint) and jobs run bootc installs, so it needs a privileged container and the host PID
-# namespace (for the iptables wrappers): a job is root on this host (see the README).
-PodmanArgs=--privileged --pids-limit=8192 --pid=host
+# The container runs dockerd (see /entrypoint) and jobs run bootc installs, so it needs a privileged container: a job is root on
+# this host (see the README).
+PodmanArgs=--privileged --pids-limit=8192
 
 # per instance: parallel builds on one containers storage corrupt it
 Volume=/var/lib/github-runner/%i/work:/home/runner/_work
@@ -40,8 +40,6 @@ Volume=/var/lib/github-runner/%i/cache:/home/runner/.cache/tmp
 Volume=/var/lib/github-runner/%i/var-tmp:/var/tmp
 Volume=/var/lib/github-runner/%i/docker:/var/lib/docker
 Volume=/usr/libexec/github-runner/container-entrypoint:/entrypoint:ro
-# iptables for dockerd: wrappers that run the host's (the official image has none)
-Volume=/usr/libexec/github-runner/fw:/usr/local/sbin:ro
 Tmpfs=/tmp
 # host devices for jobs that run `bootc install --via-loopback`
 Volume=/dev:/host-dev
@@ -53,6 +51,8 @@ Environment=INSTANCE=%i
 # fails, and is retried, while the host drains for an update
 ExecStartPre=/usr/libexec/github-runner/prepare-instance %i
 ExecStartPre=/usr/libexec/github-runner/mint-jitconfig %i
+# NAT for the Docker bridges in the container (the official image has no iptables)
+ExecStartPost=/usr/libexec/github-runner/docker-nat %i
 ExecStopPost=/usr/bin/rm -f /run/github-runner/%i.env
 # the runner exits after one job: a restart is the normal cycle
 Restart=always

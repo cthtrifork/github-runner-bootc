@@ -1,0 +1,9 @@
+#!/usr/bin/bash
+# ExecStartPost of github-runner@<instance>: NAT for the Docker bridges inside the runner container, using the host's nft
+# in the container's network namespace (the official runner image has no iptables or nft).
+set -euo pipefail
+
+inst="${1:?Usage: $0 <instance>}"
+pid="$(podman inspect --format '{{.State.Pid}}' "github-runner-$inst")"
+[[ "$pid" =~ ^[1-9][0-9]*$ ]] || { echo "github-runner-$inst is not running" >&2; exit 1; }
+nsenter --target "$pid" --net nft -f /usr/share/github-runner/docker-nat.nft
