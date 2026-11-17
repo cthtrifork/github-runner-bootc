@@ -35,6 +35,9 @@ env:
   TRIVY_VERSION: v0.76.2 # renovate: datasource=github-releases depName=aquasecurity/trivy
   # The DB comes from the cache that trivy-cache.yaml refreshes daily.
   TRIVY_SKIP_DB_UPDATE: "true"
+  # no update check or telemetry calls from the scans
+  TRIVY_SKIP_VERSION_CHECK: "true"
+  TRIVY_DISABLE_TELEMETRY: "true"
 
 jobs:
   # A push to main builds, and so releases, only when the image files changed since the commit the published images were
