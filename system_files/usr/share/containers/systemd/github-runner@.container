@@ -15,7 +15,8 @@ StartLimitIntervalSec=0
 Image=ghcr.io/actions/actions-runner:2.338.2
 Pull=never
 ContainerName=github-runner-%i
-Exec=/home/runner/run.sh
+# starts dockerd, then the runner (the official image has Docker's binaries but runs no daemon)
+Exec=/entrypoint
 User=1001
 Group=1001
 # ACTIONS_RUNNER_INPUT_JITCONFIG, written by mint-jitconfig before every start
@@ -36,6 +37,8 @@ Volume=/var/lib/github-runner/%i/dnf:/var/cache/dnf
 Volume=/var/lib/github-runner/%i/dnf:/home/runner/.cache/dnf
 Volume=/var/lib/github-runner/%i/cache:/home/runner/.cache/tmp
 Volume=/var/lib/github-runner/%i/var-tmp:/var/tmp
+Volume=/var/lib/github-runner/%i/docker:/var/lib/docker
+Volume=/usr/libexec/github-runner/container-entrypoint:/entrypoint:ro
 Tmpfs=/tmp
 # host devices for jobs that run `bootc install --via-loopback`
 Volume=/dev:/host-dev

@@ -547,10 +547,10 @@ jobs:
       contents: read
     steps:
       - name: Where am I running
-        run: id && uname -a && podman info --format '{{.Host.OCIRuntime.Name}} {{.Store.GraphDriverName}}'
+        run: id && uname -a && docker info --format '{{.ServerVersion}} {{.Driver}}'
 
-      - name: Podman works inside the runner
-        run: printf 'FROM scratch\nCOPY hello /hello\n' > Containerfile && echo hello > hello && buildah bud -t localhost/live-test:1 . && podman images localhost/live-test
+      - name: Docker works inside the runner
+        run: printf 'FROM scratch\nCOPY hello /hello\n' > Dockerfile && echo hello > hello && docker build -t live-test:1 . && docker images live-test
 
   # Every build of main (a merge, the weekly schedule, a manual run) publishes a release named like the image tag, with
   # notes drafted from the merged pull request titles.
