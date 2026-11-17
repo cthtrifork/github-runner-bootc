@@ -599,11 +599,16 @@ jobs:
           } > notes.md
           gh release edit "$TAG" --notes-file notes.md
 
-  # The installer ISO of the release: the versioned file first, then the stable github-runner-latest.iso. It waits for the
+  # The installer ISOs of the release (default and offline image): the versioned file first, then the stable
+  # github-runner-latest.iso / github-runner-offline-latest.iso. It waits for the
   # release, so a failed build or release leaves the stable URL where it was.
   iso:
-    name: Installer ISO
+    name: Installer ISO (${{ matrix.variant }})
     needs: [build, release]
+    strategy:
+      fail-fast: false
+      matrix:
+        variant: [default, offline]
     if: ${{ github.ref == 'refs/heads/main' && github.event_name != 'pull_request' && needs.build.outputs.pushed == 'true' }}
     uses: ./.github/workflows/create-iso.yaml
     permissions:
@@ -611,5 +616,5 @@ jobs:
       packages: read # pull the image
     with:
       tag: ${{ needs.build.outputs.version }}
-      variant: default
+      variant: ${{ matrix.variant }}
       refresh_latest: true

@@ -52,8 +52,8 @@ flowchart LR
 
 1. **Install:** write the raw disk image to the disk with `dd`, or run `bootc switch` to one of the images above on a
    host that already runs bootc. An installer ISO is experimental (see #20 and [Build a disk image yourself](#build-a-disk-image-yourself)); every release
-   publishes one at a stable URL, `https://shared-files.portableinfo.cloud/github-runner-latest.iso`, and keeps the versioned
-   `github-runner-<version>.iso` next to it.
+   publishes them at stable URLs, `https://shared-files.portableinfo.cloud/github-runner-latest.iso` (default image) and
+   `.../github-runner-offline-latest.iso` (offline image), and keeps the versioned `github-runner[-offline]-<version>.iso` next to them.
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
    ```
