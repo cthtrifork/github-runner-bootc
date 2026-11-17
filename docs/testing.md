@@ -65,9 +65,7 @@ and runs `tests/system-test.sh`. The ISO that is published is the interactive on
 - `build` has read-only permissions and runs the pull request's own build action. It hands the rechunked image to
   `publish` as an artifact. `publish` is the only job that can write packages and attestations; it runs no code from the
   checkout. It runs in the environment `publish` (main, the weekly run) or `publish-pr` (a labelled PR).
-- Repository settings that make this hold (they are not in the code): require approval for workflow runs from outside
-  collaborators; give the environments `publish` and `publish-pr` required reviewers and, for `publish`, the deployment
-  branch `main`; protect the tags `latest` and `main-*` of both packages with a ruleset.
+- The environments and repository settings that make this hold are not in the code: see [publishing-setup.md](publishing-setup.md).
 - Disk images and ISOs: the build job has no secrets. A manual run on `main` passes the file as an artifact to the `upload`
   job, which runs on the talos-gitops scale set `arc-files-bootc` (environment `file-upload`, branch `main`) and PUTs it,
   public, to the file server; Cloudflare R2 serves it. The token is the runner's own `FILESERVER_TOKEN`, not a repository secret.
