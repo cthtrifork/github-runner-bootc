@@ -26,7 +26,8 @@ Environment=BUILDAH_ISOLATION=chroot
 Environment=BUILDAH_LAYERS=true
 Environment=RUNNER_UPDATE_CA_CERTS=1
 
-# The image runs podman and buildah inside, so it needs a privileged container: a job is root on this host (see the README).
+# The container runs dockerd (see /entrypoint) and jobs run bootc installs, so it needs a privileged container and the host PID
+# namespace (for the iptables wrappers): a job is root on this host (see the README).
 PodmanArgs=--privileged --pids-limit=8192 --pid=host
 
 # per instance: parallel builds on one containers storage corrupt it
