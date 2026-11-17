@@ -10,7 +10,7 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Image tag to install (latest, <runner version>-<date>.<n>, pr-<n>)"
+        description: "Image tag to install (latest, latest-<runner version>-<date>-<n>, pr-<n>)"
         required: true
         default: latest
         type: string
@@ -165,13 +165,13 @@ jobs:
           # the default image keeps the plain name; the offline image has `offline` in it
           prefix=github-runner; [[ "$VARIANT" == offline ]] && prefix=github-runner-offline
           # a release tag already carries the date; any other tag gets one so a manual run never replaces the stable name
-          if [[ "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}\.[0-9]+$ ]]; then name="${prefix}-${TAG}.iso"; else name="${prefix}-${TAG}-$(date -u +%Y%m%d).iso"; fi
+          if [[ "$TAG" =~ ^latest-[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}-[0-9]+$ ]]; then name="${prefix}-${TAG}.iso"; else name="${prefix}-${TAG}-$(date -u +%Y%m%d).iso"; fi
           sha="$(sha256sum "$file" | cut -d' ' -f1)"
           put() { curl --fail --retry 3 --max-time 3600 -T "$file" -H "Authorization: Bearer $FILESERVER_TOKEN" -H "X-Content-SHA256: $sha" "$FILESERVER_URL/v1/files/$1?visibility=public"; }
           put "$name"
           echo "Uploaded \`$name\` (public)" >> "$GITHUB_STEP_SUMMARY"
           # only after the versioned file is in place, and only for a release version
-          if [[ "$REFRESH_LATEST" == true && "$TAG" =~ ^[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}\.[0-9]+$ ]]; then
+          if [[ "$REFRESH_LATEST" == true && "$TAG" =~ ^latest-[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}-[0-9]+$ ]]; then
             put "${prefix}-latest.iso"
             echo "Refreshed \`${prefix}-latest.iso\` to \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
           fi

@@ -52,7 +52,7 @@ jobs:
       contents: read
       packages: read # the revision label of the published images
     outputs:
-      # <runner version>-<YYYYMMDD>.<iteration>: the tag of both images of a release, and the release name
+      # latest-<runner version>-<YYYYMMDD>-<revision>: the tag of both images of a release, and the release name
       version: ${{ steps.version.outputs.version }}
       runner_version: ${{ steps.version.outputs.runner_version }}
       build: ${{ (github.event_name == 'push' && (steps.gate.outputs.build == 'true' || steps.since_default.outputs.any_changed == 'true' || steps.since_offline.outputs.any_changed == 'true')) || (github.event_name != 'push' && steps.gate.outputs.build == 'true' && (github.event_name != 'pull_request' || steps.changes.outputs.image_any_changed == 'true' || steps.changes.outputs.ci_any_changed == 'true')) }}
