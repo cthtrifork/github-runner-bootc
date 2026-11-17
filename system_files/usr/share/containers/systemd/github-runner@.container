@@ -12,7 +12,7 @@ StartLimitIntervalSec=0
 
 [Container]
 # github-runner-image-load.service puts the image in the container storage; Pull=never keeps podman off the network.
-Image=ghcr.io/cthtrifork/talos-gitops/github-actions-runner:2.338.2-20261115.5
+Image=ghcr.io/actions/actions-runner:2.338.2
 Pull=never
 ContainerName=github-runner-%i
 Exec=/home/runner/run.sh

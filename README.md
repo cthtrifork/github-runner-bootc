@@ -101,8 +101,9 @@ This is how `create-disk-image.yaml` builds it. An installer ISO (experimental, 
 
 ## Versions
 
-Both images carry the same tag, `<runner version>-<YYYYMMDD>.<iteration>`, e.g. `2.338.2-20261115.5`: the GitHub Actions runner
-inside the runner image (not the OS image version), the UTC build date, and the build of that day. Versioned tags are never
+The runner is the official `ghcr.io/actions/actions-runner` image, unmodified (Ubuntu, passwordless `sudo` for `runner`, no
+podman, buildah or Homebrew tools: a job installs what it needs). Both OS images carry the same tag,
+`<runner version>-<YYYYMMDD>.<iteration>`, e.g. `2.338.2-20261115.5`: the runner version (not the OS image version), the UTC build date, and the build of that day. Versioned tags are never
 moved; `latest` is the newest release of each image. The runner version is also the image label
 `org.opencontainers.image.runner-version` and shows in `/usr/lib/os-release` (`VARIANT`, see `bootc status`).
 
