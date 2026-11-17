@@ -1,6 +1,8 @@
 name: Clean up old images
 
-# Prunes the ghcr.io packages of the two images.
+# Prunes the ghcr.io packages of the two images. It holds packages: write, so it never runs on pull_request (a PR could
+# edit it and drop the dry run): schedule and manual runs only. To test a change, run it manually; a manual run is a dry
+# run unless it says otherwise.
 on:
   schedule:
     - cron: "05 7 * * *"
@@ -10,9 +12,6 @@ on:
         description: "Only list what would be deleted"
         type: boolean
         default: true
-  pull_request:
-    paths:
-      - ".github/workflows/cleanup-old-images.yaml"
 
 concurrency:
   group: cleanup-old-images
@@ -22,8 +21,8 @@ permissions: {}
 
 env:
   PACKAGE: github-runner-bootc,offline-github-runner-bootc
-  # a PR and a manual run are dry runs unless the manual run says otherwise
-  DRY_RUN: ${{ github.event_name == 'pull_request' || (github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+  # a manual run is a dry run unless it says otherwise; the schedule deletes
+  DRY_RUN: ${{ github.event_name == 'workflow_dispatch' && inputs.dry_run }}
 
 jobs:
   cleanup:
