@@ -602,9 +602,8 @@ jobs:
           } > notes.md
           gh release edit "$TAG" --notes-file notes.md
 
-  # The installer ISOs of the release (default and offline image): the versioned file first, then the stable
-  # github-runner-latest.iso / github-runner-offline-latest.iso. It waits for the
-  # release, so a failed build or release leaves the stable URL where it was.
+  # The installer ISOs of the release (default and offline image) replace github-runner-latest.iso and
+  # github-runner-offline-latest.iso on the file server. They wait for the release, so a failed build or release leaves them as they were.
   iso:
     name: Installer ISO (${{ matrix.variant }})
     needs: [build, release]
@@ -620,4 +619,3 @@ jobs:
     with:
       tag: ${{ needs.build.outputs.version }}
       variant: ${{ matrix.variant }}
-      refresh_latest: true

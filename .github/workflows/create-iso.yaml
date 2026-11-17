@@ -2,9 +2,9 @@ name: Create ISO
 
 # Builds an installer ISO of a published image with bootc-image-builder. A manual run on main and the release in
 # build.yaml (which calls this workflow) build it on the cluster runner `arc-iso-bootc` (talos-gitops) and upload it from
-# there to the file server (public downloads from Cloudflare R2), so the 5 GiB ISO is never downloaded: a release uploads
-# `github-runner[-offline]-<version>.iso` and then refreshes `github-runner[-offline]-latest.iso`, so a failed build never
-# moves the stable URL. The `iso` PR label instead builds an ISO with an unattended kickstart on a GitHub runner,
+# there to the file server (public downloads from Cloudflare R2), so the 5 GiB ISO is never downloaded. The file server only
+# ever holds `github-runner-latest.iso` and `github-runner-offline-latest.iso`: each release replaces its own (atomically),
+# and a failed build never touches it. The `iso` PR label instead builds an ISO with an unattended kickstart on a GitHub runner,
 # installs it in QEMU and runs the system tests on the installed disk; the PR image must exist already (labels `push`
 # or `e2e` publish it).
 on:
@@ -20,10 +20,6 @@ on:
         type: choice
         options: [default, offline]
         default: default
-      refresh_latest:
-        description: "Also replace github-runner-latest.iso (a release does; tag it with a release version)"
-        type: boolean
-        default: false
   workflow_call:
     inputs:
       tag:
@@ -32,9 +28,6 @@ on:
       variant:
         type: string
         default: default
-      refresh_latest:
-        type: boolean
-        default: false
   pull_request:
     types: [labeled]
     branches: [main]
@@ -137,7 +130,6 @@ jobs:
       IMAGE_FULL: ${{ inputs.variant == 'offline' && format('ghcr.io/{0}/offline-{1}', github.repository_owner, github.event.repository.name) || format('ghcr.io/{0}', github.repository) }}
       TAG: ${{ inputs.tag }}
       VARIANT: ${{ inputs.variant || 'default' }}
-      REFRESH_LATEST: ${{ inputs.refresh_latest }}
       # pinned by digest, bump by hand (Renovate does not read this file for it)
       BIB_IMAGE: quay.io/centos-bootc/bootc-image-builder@sha256:dab86ee6b46dcade411b37f4e70b07d93b6a06da0dbfec6fe89247a220e0d9f8
     steps:
@@ -148,7 +140,8 @@ jobs:
       - name: Build the ISO
         run: | #sh
           set -euo pipefail
-          [[ "$TAG" =~ ^[A-Za-z0-9_.-]+$ ]] || { echo "::error::bad tag"; exit 1; }
+          # only a published release becomes the latest ISO: `latest` or a release tag
+          [[ "$TAG" == latest || "$TAG" =~ ^latest-[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}-[0-9]+$ ]] || { echo "::error::tag must be latest or a release tag (latest-<runner version>-<date>-<n>)"; exit 1; }
           mkdir -p out
           sudo podman pull -q "$IMAGE_FULL:$TAG"
           sudo podman pull -q "$BIB_IMAGE"
@@ -170,14 +163,9 @@ jobs:
           file=out/bootiso/install.iso
           # the default image keeps the plain name; the offline image has `offline` in it
           prefix=github-runner; [[ "$VARIANT" == offline ]] && prefix=github-runner-offline
-          # a release tag already carries the date; any other tag gets one so a manual run never replaces the stable name
-          if [[ "$TAG" =~ ^latest-[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}-[0-9]+$ ]]; then name="${prefix}-${TAG}.iso"; else name="${prefix}-${TAG}-$(date -u +%Y%m%d).iso"; fi
+          name="${prefix}-latest.iso"
           sha="$(sha256sum "$file" | cut -d' ' -f1)"
-          put() { curl --fail --retry 3 --max-time 3600 -T "$file" -H "Authorization: Bearer $FILESERVER_TOKEN" -H "X-Content-SHA256: $sha" "$FILESERVER_URL/v1/files/$1?visibility=public"; }
-          put "$name"
-          echo "Uploaded \`$name\` (public)" >> "$GITHUB_STEP_SUMMARY"
-          # only after the versioned file is in place, and only for a release version
-          if [[ "$REFRESH_LATEST" == true && "$TAG" =~ ^latest-[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}-[0-9]+$ ]]; then
-            put "${prefix}-latest.iso"
-            echo "Refreshed \`${prefix}-latest.iso\` to \`$TAG\`" >> "$GITHUB_STEP_SUMMARY"
-          fi
+          # the same name replaces the file, written atomically on the server
+          curl --fail --retry 3 --max-time 3600 -T "$file" -H "Authorization: Bearer $FILESERVER_TOKEN" -H "X-Content-SHA256: $sha" \
+            "$FILESERVER_URL/v1/files/$name?visibility=public"
+          echo "Uploaded \`$name\` from \`$TAG\` (public)" >> "$GITHUB_STEP_SUMMARY"
