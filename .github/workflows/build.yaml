@@ -32,6 +32,12 @@ env:
   TIER: ${{ (github.event_name == 'workflow_dispatch' && inputs.tier) || (contains(github.event.pull_request.labels.*.name, 'e2e-live') && 'e2e-live') || (contains(github.event.pull_request.labels.*.name, 'e2e') && 'e2e') || 'none' }}
   # a PR image is pushed only when a label asks for it, never from a fork
   PUSH: ${{ github.event_name != 'pull_request' || (github.event.pull_request.head.repo.fork != true && (contains(github.event.pull_request.labels.*.name, 'push') || contains(github.event.pull_request.labels.*.name, 'e2e') || contains(github.event.pull_request.labels.*.name, 'e2e-live'))) }}
+  TRIVY_VERSION: v0.76.2 # renovate: datasource=github-releases depName=aquasecurity/trivy
+  # The DB comes from the cache that trivy-cache.yaml refreshes daily.
+  TRIVY_SKIP_DB_UPDATE: "true"
+  # no update check or telemetry calls from the scans
+  TRIVY_SKIP_VERSION_CHECK: "true"
+  TRIVY_DISABLE_TELEMETRY: "true"
 
 jobs:
   # A push to main builds, and so releases, only when the image files changed since the commit the published images were
@@ -235,8 +241,7 @@ jobs:
           done
           echo "digest=$(cat "$RUNNER_TEMP/digest")" >> "$GITHUB_OUTPUT"
 
-      # All CRITICAL/HIGH vulnerabilities, including ones with no fix yet (dnf updateinfo only lists fixed advisories);
-      # report only (the weekly rebuild picks fixes up), so a new CVE in a base package does not turn every PR red.
+      # All CRITICAL/HIGH vulnerabilities, including ones with no fix yet; report only (the weekly rebuild picks fixes up), so a new CVE in a base package does not turn every PR red.
       - name: Trivy scan
         if: ${{ env.PUSH == 'true' }}
         uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
@@ -248,6 +253,7 @@ jobs:
           severity: CRITICAL,HIGH
           exit-code: "0"
           timeout: 15m
+          version: ${{ env.TRIVY_VERSION }}
         env:
           TRIVY_USERNAME: ${{ github.actor }}
           TRIVY_PASSWORD: ${{ github.token }}
@@ -263,25 +269,6 @@ jobs:
         with:
           sarif_file: trivy.sarif
           category: trivy-${{ matrix.variant }}
-
-      # Pending Fedora security advisories for each pushed image (Trivy has no Fedora OS advisories).
-      - name: Pending security updates (dnf updateinfo)
-        if: ${{ env.PUSH == 'true' }}
-        run: | #sh
-          # shellcheck disable=SC2016 # the backticks are markdown
-          if docker run --rm --entrypoint dnf "$IMAGE@$DIGEST" -q updateinfo list --security --refresh \
-            > dnf-security.txt 2> dnf-security.err; then
-            {
-              printf '### Pending security updates in `%s@%s`\n\n```\n' "$IMAGE" "$DIGEST"
-              cat dnf-security.txt
-              printf '```\n'
-            } >> "$GITHUB_STEP_SUMMARY"
-          else
-            cat dnf-security.err
-            echo failed > dnf-security.failed
-          fi
-        env:
-          DIGEST: ${{ steps.push.outputs.digest }}
 
       - name: Write Trivy comment
         if: ${{ github.event_name == 'pull_request' && env.PUSH == 'true' }}
@@ -307,23 +294,6 @@ jobs:
               echo "⚠️ **OS packages were NOT scanned:** Trivy has no advisories for Fedora, so only library/language findings are counted."
               echo ""
             fi
-            echo "#### Fedora security updates (dnf updateinfo)"
-            if [[ -f dnf-security.failed ]]; then
-              echo "⚠️ \`dnf updateinfo\` failed; see the job log."
-            else
-              adv=$(grep -c . dnf-security.txt || true)
-              echo "**${adv}** pending security advisories in the image's packages."
-              if [[ "$adv" -gt 0 ]]; then
-                echo ""
-                echo "<details><summary>Advisories</summary>"
-                echo ""
-                echo '```'
-                head -n 50 dnf-security.txt
-                echo '```'
-                echo "</details>"
-              fi
-            fi
-            echo ""
             echo "[Full run](${RUN_URL})"
           } > trivy-comment.md
 
@@ -335,16 +305,12 @@ jobs:
           header: "🛡️ Trivy summary for ${{ matrix.variant }}"
 
       # Compare the PR image with the published :latest (size, layers, new/fixed CRITICAL/HIGH).
-      - name: Write image diff comment
-        id: diff
+      - name: Pull the published baseline
+        id: baseline
         if: ${{ github.event_name == 'pull_request' && env.PUSH == 'true' }}
         env:
           DIGEST: ${{ steps.push.outputs.digest }}
-          VARIANT: ${{ matrix.variant }}
-          TRIVY_USERNAME: ${{ github.actor }}
-          TRIVY_PASSWORD: ${{ github.token }}
         run: | #sh
-          set -euo pipefail
           if ! docker pull -q "$IMAGE:latest" > /dev/null 2>&1; then
             echo "No $IMAGE:latest yet, skipping the baseline comparison"
             echo "exists=false" >> "$GITHUB_OUTPUT"
@@ -352,8 +318,32 @@ jobs:
           fi
           echo "exists=true" >> "$GITHUB_OUTPUT"
           docker pull -q "$IMAGE@$DIGEST" > /dev/null
-          trivy image --scanners vuln --severity CRITICAL,HIGH --timeout 15m --format json \
-            --output latest_trivy.json "$IMAGE:latest"
+
+      # Trivy is already set up by the scan above (same version, cached DB).
+      - name: Trivy scan of the published image
+        if: ${{ steps.baseline.outputs.exists == 'true' }}
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25 # v0.36.0
+        with:
+          image-ref: ${{ env.IMAGE }}:latest
+          scanners: vuln
+          format: json
+          output: latest_trivy.json
+          severity: CRITICAL,HIGH
+          exit-code: "0"
+          timeout: 15m
+          skip-setup-trivy: true
+        env:
+          TRIVY_USERNAME: ${{ github.actor }}
+          TRIVY_PASSWORD: ${{ github.token }}
+
+      - name: Write image diff comment
+        id: diff
+        if: ${{ steps.baseline.outputs.exists == 'true' }}
+        env:
+          DIGEST: ${{ steps.push.outputs.digest }}
+          VARIANT: ${{ matrix.variant }}
+        run: | #sh
+          set -euo pipefail
 
           base=$(docker image inspect "$IMAGE:latest" | jq '.[0]')
           pr=$(docker image inspect "$IMAGE@$DIGEST" | jq '.[0]')
@@ -385,7 +375,7 @@ jobs:
           } > image-diff.md
 
       - name: Sticky PR comment (image diff)
-        if: ${{ steps.diff.outputs.exists == 'true' }}
+        if: ${{ steps.baseline.outputs.exists == 'true' }}
         uses: marocchino/sticky-pull-request-comment@5770ad5eb8f42dd2c4f34da00c94c5381e49af88 # v3.0.5
         with:
           path: image-diff.md
