@@ -145,14 +145,28 @@ jobs:
           # only a published release becomes the latest ISO: `latest` or a release tag
           [[ "$TAG" == latest || "$TAG" =~ ^latest-[0-9]+\.[0-9]+\.[0-9]+-[0-9]{8}-[0-9]+$ ]] || { echo "::error::tag must be latest or a release tag (latest-<runner version>-<date>-<n>)"; exit 1; }
           mkdir -p out
+          # bootc-image-builder's osbuild store (the downloaded installer RPMs and stage results) and RPM metadata live on the
+          # runner's persistent volume (/var/cache/bib, see the scale set in talos-gitops), so most of the ~970 RPMs are not
+          # downloaded on every build. Without that volume this is just a scratch directory. Wipe it past 25 GiB.
+          cache=/var/cache/bib
+          sudo mkdir -p "$cache/store" "$cache/rpmmd"
+          if [[ "$(sudo du -sk "$cache" | cut -f1)" -gt $((25 * 1024 * 1024)) ]]; then
+            echo "bib cache over 25 GiB: wiping it"
+            sudo rm -rf "${cache:?}/store" "${cache:?}/rpmmd"
+            sudo mkdir -p "$cache/store" "$cache/rpmmd"
+          fi
           sudo podman pull -q "$IMAGE_FULL:$TAG"
           sudo podman pull -q "$BIB_IMAGE"
           # /host-dev is the node's live /dev (see the scale set): osbuild needs the loop devices it creates
           sudo podman run --rm --privileged --pull=never --security-opt label=type:unconfined_t \
             -v /var/lib/containers/storage:/var/lib/containers/storage -v /host-dev:/dev -v /run/udev:/run/udev:ro \
             -v "$PWD/iso.toml:/config.toml:ro" -v "$PWD/out:/output" \
+            -v "$cache/store:/store" -v "$cache/rpmmd:/rpmmd" \
             "$BIB_IMAGE" --type iso --rootfs xfs --config /config.toml --local "$IMAGE_FULL:$TAG"
           sudo chown -R "$(id -u):$(id -g)" out
+          # drop the layers of the previous image (the container storage is persistent too)
+          sudo podman image prune -f >/dev/null
+          echo "bib cache: $(sudo du -sh "$cache" | cut -f1)" >> "$GITHUB_STEP_SUMMARY"
           ls -l out/bootiso/install.iso
           {
             echo "ISO is $(( $(stat -c %s out/bootiso/install.iso) / 1048576 )) MiB"
