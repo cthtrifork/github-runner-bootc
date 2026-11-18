@@ -5,7 +5,7 @@ flowchart LR
     subgraph REG["Registries"]
         direction TB
         OS["OS image<br/>github-runner-bootc<br/>offline-github-runner-bootc"]
-        RUN["Runner image"]
+        RUN["Runner image<br/>ghcr.io/actions/actions-runner"]
         MIRROR["Internal mirror<br/>(airgapped sites)"]
     end
 
@@ -16,7 +16,7 @@ flowchart LR
         subgraph UNITS["systemd: github-runner@N"]
             direction TB
             MINT["mint-jitconfig<br/>single-use JIT config"]
-            CTR["Runner container<br/>one job, then a fresh one"]
+            CTR["Runner container<br/>Docker daemon + one job,<br/>then a fresh one"]
             MINT --> CTR
         end
         SEED["GitHub App credentials<br/>/etc/github-runner, root only"]
@@ -51,7 +51,7 @@ sequenceDiagram
 
     loop for every job
         S->>G: installation token, then generate-jitconfig (single use)
-        S->>S: start the runner container from the local image
+        S->>S: start the runner container from the local image<br/>(host adds the NAT rule for its Docker bridges; the container starts dockerd, then the runner)
         S->>G: runner connects and waits for a job
         G-->>S: job
         S->>G: logs and result

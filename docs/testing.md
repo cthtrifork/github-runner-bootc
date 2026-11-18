@@ -9,7 +9,6 @@ take seconds.
 |---|---|
 | `actionlint`, `zizmor` (pedantic) | the workflows |
 | `shellcheck`, `hadolint` | the scripts and the Containerfile |
-| `image refs` | the runner image tag is the same in the Containerfile and the Quadlet unit (`tests/check-image-refs.sh`) |
 | `check title` | the PR title is a Conventional Commit |
 | `Validate Renovate config`, `dry run` | the Renovate configuration |
 | `Build ... image` | both images build (the PR image is only pushed when a label asks for it) |
@@ -20,7 +19,7 @@ take seconds.
 |---|---|
 | `push` | publishes the PR image as `pr-<number>` |
 | `e2e` | boots both images in QEMU and runs `tests/system-test.sh` inside them |
-| `e2e-live` | `e2e`, then registers a real runner on the offline image's VM and runs a job on it |
+| `e2e-live` | `e2e`, then registers a real runner on the offline image's VM and runs a job on it (`docker run --rm hello-world` and a network check from a container) |
 | `disk` | builds the raw disk image without uploading it |
 | `iso` | installs an ISO unattended in QEMU and runs the system tests on the installed disk |
 
@@ -69,8 +68,9 @@ and runs `tests/system-test.sh`. The ISO that is published is the interactive on
 - Disk images: the build job has no secrets. A manual run on `main` passes the file as an artifact to the `upload` job, which runs on
   the talos-gitops scale set `arc-files-bootc` (environment `file-upload`, branch `main`) and PUTs it, public, to the file server;
   Cloudflare R2 serves it. The token is the runner's own `FILESERVER_TOKEN`, not a repository secret.
-- ISOs: built and uploaded on the privileged scale set `arc-iso-bootc` (`runs-on` of the `publish` job in `create-iso.yaml`), so the 5 GiB
-  ISO is never downloaded. The Containerfile pins the Fedora repos to `mirrors.dotsrc.org`, the only Fedora host the cluster allows.
+- ISOs: built and uploaded on the privileged scale set `arc-iso-bootc` (`runs-on` of the `publish` job in `create-iso.yaml`), so the
+  multi-GiB ISO is never downloaded from GitHub. The file server only ever holds `github-runner-latest.iso` and
+  `github-runner-offline-latest.iso`; a release replaces its own. The Containerfile pins the Fedora repos to `mirrors.dotsrc.org`, the only Fedora host the cluster allows.
 - Verify a release by identity: `gh attestation verify oci://<image>@<digest> -R cthtrifork/github-runner-bootc --signer-workflow cthtrifork/github-runner-bootc/.github/workflows/build.yaml --source-ref refs/heads/main`
 
 ## Lessons
@@ -87,7 +87,6 @@ actionlint
 zizmor --persona pedantic .github
 shellcheck --severity=warning tests/*.sh system_files/usr/libexec/github-runner/* system_files/usr/bin/*
 hadolint github-runner.containerfile
-tests/check-image-refs.sh
 ```
 
 `tests/system-test.sh` runs inside any booted image, for example a VM installed from the disk image.
