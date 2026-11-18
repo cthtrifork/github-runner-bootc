@@ -111,7 +111,7 @@ every release builds it on a cluster runner and uploads it to the stable URLs ab
 
 ## Versions
 
-The runner is the official `ghcr.io/actions/actions-runner` image, unmodified (Ubuntu, passwordless `sudo` for `runner`, no
+The runner is the official [ghcr.io/actions/actions-runner](https://github.com/actions/runner) image, unmodified (Ubuntu, passwordless `sudo` for `runner`, no
 podman, buildah or Homebrew tools: a job installs what it needs). A Docker daemon runs inside the runner container, so a job
 can `docker run`; containers on its default bridge reach the network (NAT), but published ports (`-p`) are not reachable
 from outside the container. Both OS images carry the same tag,
