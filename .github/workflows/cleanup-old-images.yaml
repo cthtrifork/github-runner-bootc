@@ -47,7 +47,7 @@ jobs:
           token: ${{ github.token }}
           packages: ${{ env.PACKAGE }}
           keep-n-tagged: 0
-          exclude-tags: main,main-*,latest-*,latest
+          exclude-tags: main,main-*,latest-*,latest,sha256-*
           older-than: 7 days
           dry-run: ${{ env.DRY_RUN == 'true' }}
 
@@ -57,7 +57,7 @@ jobs:
           token: ${{ github.token }}
           packages: ${{ env.PACKAGE }}
           delete-ghost-images: true
-          exclude-tags: main,main-*,latest-*,latest
+          exclude-tags: main,main-*,latest-*,latest,sha256-*
           dry-run: ${{ env.DRY_RUN == 'true' }}
 
       # younger than 30 days is kept, plus the 5 newest older ones
@@ -67,6 +67,6 @@ jobs:
           token: ${{ github.token }}
           packages: ${{ env.PACKAGE }}
           keep-n-tagged: 5
-          exclude-tags: latest
+          exclude-tags: latest,sha256-*
           older-than: 30 days
           dry-run: ${{ env.DRY_RUN == 'true' }}
