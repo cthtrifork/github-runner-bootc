@@ -62,7 +62,7 @@ About 300 lines of Go with tests, a day or two, plus the manifests and the host 
 | A stolen host changes repository settings | possible (Administration) | not possible: the host cannot reach those APIs |
 | A stolen host registers runners for its repository | possible | still possible, until its token is revoked; bounded by the rate limit and the policy |
 | Rotating after an incident | rotate the App key, update every host and the cluster | revoke one host token |
-| The broker is compromised | not applicable | the App key is exposed: the broker is the new crown jewel, so keep it small and alone in its namespace |
+| The broker is compromised | not applicable | the App key is exposed: the broker holds the only copy, so it runs alone in its own namespace with the smallest code and permissions possible |
 
 It does **not** make a job safe on the host (the container is still privileged) and it does not cover the ARC scale sets, which
 need the App credentials to talk to GitHub themselves.
