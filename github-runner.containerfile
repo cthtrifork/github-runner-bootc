@@ -37,6 +37,8 @@ RUN { \
     } >> /usr/lib/os-release
 
 COPY system_files/ /
+# the public key of the OS image signatures; /etc/containers/policy.json (from system_files) requires it for our images (docs/signing.md)
+COPY cosign.pub /usr/share/github-runner/cosign.pub
 
 # github-runner-update.timer drains the runners before it reboots; the stock timer would not.
 RUN systemctl disable bootc-fetch-apply-updates.timer || true \

@@ -1,0 +1,13 @@
+{
+  "default": [{ "type": "insecureAcceptAnything" }],
+  "transports": {
+    "docker": {
+      "ghcr.io/cthtrifork/github-runner-bootc": [
+        { "type": "sigstoreSigned", "keyPath": "/usr/share/github-runner/cosign.pub", "signedIdentity": { "type": "matchRepository" } }
+      ],
+      "ghcr.io/cthtrifork/offline-github-runner-bootc": [
+        { "type": "sigstoreSigned", "keyPath": "/usr/share/github-runner/cosign.pub", "signedIdentity": { "type": "matchRepository" } }
+      ]
+    }
+  }
+}

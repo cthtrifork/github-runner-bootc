@@ -145,8 +145,8 @@ Because a job is root on the host, anything on the host is in reach of a job, so
   Otherwise attach each host to one trust domain only.
 - **Restrict the network.** The host has no firewall: a job reaches the LAN, the host's services and any cloud metadata
   endpoint. Put the host on its own VLAN or add egress rules that allow GitHub, your registries and nothing else.
-- **Verify what you boot.** The host ships no signature policy yet (see #42): enforce one with `/etc/containers/policy.json`
-  and `registries.d`. The images carry build provenance and SBOM attestations, and every ISO a build provenance attestation
+- **Verify what you boot.** The host refuses an unsigned OS image of ours: `/etc/containers/policy.json` requires a signature
+  from the key in the image ([signing](docs/signing.md)); other images are accepted. The images carry build provenance and SBOM attestations, and every ISO a build provenance attestation
   (`gh attestation verify`, see [Testing](docs/testing.md)); the SHA-256 of an ISO is in the summary of the `Create ISO` run that
   built it and is printed by `gh attestation verify`. The runner image is pinned by tag and the Fedora base image floats, on purpose, so the weekly
   rebuild picks up fixes; updates are applied nightly without a human in the loop.
