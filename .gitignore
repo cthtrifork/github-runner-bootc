@@ -1,2 +1,4 @@
+# signing and App keys: never commit private key material
 cosign.key
-
+*.key
+*.pem
