@@ -58,6 +58,8 @@ flowchart LR
 
 ## Use it
 
+Step by step, from the ISO to the first job: the [install guide](docs/install.md). In short:
+
 1. **Install:** boot the installer ISO, write a raw disk image to the disk with `dd` (you build it, see below), or run
    `bootc switch` to one of the images above on a host that already runs bootc. An installer ISO is experimental (see #20): every release replaces it at a stable URL, with no versioned copies.
    Download [`github-runner-bootc-latest.iso`](https://shared-files.portableinfo.cloud/github-runner-bootc-latest.iso) (default image) or

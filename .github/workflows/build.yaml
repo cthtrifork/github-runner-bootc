@@ -616,6 +616,8 @@ jobs:
     permissions:
       contents: read
       packages: read # pull the image
+      id-token: write # sign the ISO's provenance attestation (OIDC)
+      attestations: write # store it
     with:
       tag: ${{ needs.build.outputs.version }}
       variant: ${{ matrix.variant }}
