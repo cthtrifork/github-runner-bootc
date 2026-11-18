@@ -76,11 +76,9 @@ Step by step, from the ISO to the first job: the [install guide](docs/install.md
    Use `--scope org:name` for an organization.
 3. **Target it** with `runs-on: [self-hosted, bootc]`.
 
-Airgapped sites: point `/etc/containers/registries.conf.d/` at an internal mirror for the OS and runner images, `chrony`
-at an internal NTP server, and put extra `Volume=` lines (private CA, mirror config) in
-`/etc/containers/systemd/github-runner@.container.d/10-site.conf`. The runner itself only needs GitHub. Mirror the runner
-image `ghcr.io/actions/actions-runner` too, and note that the image's Fedora repositories (`/etc/yum.repos.d/fedora.repo` and
-`fedora-updates.repo`) point at `mirrors.dotsrc.org`: change them for an internal mirror.
+Airgapped sites or an authenticated internal registry: [mirrors and private registries](docs/airgap.md) (what to mirror, the
+registry drop-in, `/etc/ostree/auth.json`, the Fedora repositories, `chrony`). The runner itself only needs GitHub; put a private
+CA or proxy settings in `/etc/containers/systemd/github-runner@.container.d/10-site.conf`.
 
 ## Build a disk image yourself
 

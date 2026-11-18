@@ -92,4 +92,4 @@ passwordless `sudo` and a Docker daemon, and without podman, buildah or other to
 - A job is **root on the host**: read [Security](../README.md#security) before attaching the host to a repository, and use a
   dedicated host for private or trusted repositories only.
 - The host updates itself every night and reboots once its runners are idle.
-- Airgapped sites: see the end of [Use it](../README.md#use-it) for the registry and package mirrors.
+- Airgapped sites and authenticated registries: [mirrors and private registries](airgap.md).
