@@ -1,3 +1,5 @@
+<p align="center"><img src="docs/logo.svg" width="96" alt="github-runner-bootc"></p>
+
 # github-runner-bootc
 
 [![Build](https://github.com/cthtrifork/github-runner-bootc/actions/workflows/build.yaml/badge.svg?branch=main)](https://github.com/cthtrifork/github-runner-bootc/actions/workflows/build.yaml)

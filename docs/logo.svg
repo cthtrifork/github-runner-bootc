@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128" role="img" aria-label="github-runner-bootc">
+  <rect width="128" height="128" rx="28" fill="#0d1117"/>
+  <path d="M43.4 40.5 A36 36 0 1 0 84.6 40.5" fill="none" stroke="#58a6ff" stroke-width="10" stroke-linecap="round"/>
+  <line x1="64" y1="34" x2="64" y2="62" stroke="#58a6ff" stroke-width="10" stroke-linecap="round"/>
+  <circle cx="64" cy="24" r="9" fill="#0d1117" stroke="#58a6ff" stroke-width="7"/>
+  <path d="M57 72 L57 92 L75 82 Z" fill="#3fb950" stroke="#3fb950" stroke-width="4" stroke-linejoin="round"/>
+</svg>
