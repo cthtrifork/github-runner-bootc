@@ -24,6 +24,15 @@ if systemctl is-active --quiet 'github-runner@1.service'; then
     exit 1
 fi
 
+echo "--- signature policy ---"
+# our OS images must be signed by the key in the image; everything else is accepted
+for img in github-runner-bootc offline-github-runner-bootc; do
+    jq -e --arg i "ghcr.io/cthtrifork/$img" '.transports.docker[$i][0] | .type == "sigstoreSigned" and .keyPath == "/usr/share/github-runner/cosign.pub" and .signedIdentity.type == "matchRepository"' /etc/containers/policy.json >/dev/null \
+        || { echo "no signature requirement for $img in /etc/containers/policy.json"; exit 1; }
+done
+grep -q 'BEGIN PUBLIC KEY' /usr/share/github-runner/cosign.pub
+grep -q 'use-sigstore-attachments: true' /etc/containers/registries.d/github-runner.yaml
+
 echo "--- runner image ---"
 ref="$(sed -n 's/^Image=//p' '/usr/share/containers/systemd/github-runner@.container')"
 echo "runner image: $ref"

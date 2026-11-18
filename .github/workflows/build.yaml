@@ -271,10 +271,8 @@ jobs:
           DIGEST: ${{ steps.push.outputs.digest }}
         run: | #sh
           set -euo pipefail
-          if [[ -z "$COSIGN_PRIVATE_KEY" ]]; then
-            echo "::warning::COSIGN_PRIVATE_KEY is not set in the environment publish: this image is not signed"
-            exit 0
-          fi
+          # the hosts refuse an unsigned image of ours (/etc/containers/policy.json), so an unsigned build must fail, not ship
+          [[ -n "$COSIGN_PRIVATE_KEY" ]] || { echo "::error::COSIGN_PRIVATE_KEY is not set in the environment publish: the image cannot be signed"; exit 1; }
           cosign sign --yes --key env://COSIGN_PRIVATE_KEY \
             --tlog-upload=false \
             --new-bundle-format=false \

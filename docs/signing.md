@@ -1,8 +1,8 @@
 # Image signing
 
 The OS images (`ghcr.io/cthtrifork/github-runner-bootc` and `ghcr.io/cthtrifork/offline-github-runner-bootc`) are signed
-with a cosign key pair when they are built on `main`. The hosts will refuse an image of ours that is not signed by it
-(tracked in [#42](https://github.com/cthtrifork/github-runner-bootc/issues/42)).
+with a cosign key pair when they are built on `main`. The hosts refuse an image of ours that is not signed by it
+([#42](https://github.com/cthtrifork/github-runner-bootc/issues/42)).
 
 Why a key and not keyless signing: the host checks signatures with podman's `policy.json`, and its keyless (Fulcio) rule only
 accepts an email identity. A GitHub Actions certificate names a workflow, not an email, so it cannot be expressed there.
@@ -21,9 +21,9 @@ accepts an email identity. A GitHub Actions certificate names a workflow, not an
 1. On a machine you trust, with cosign v3: `cosign generate-key-pair`. Choose a password. It writes `cosign.key` (encrypted) and `cosign.pub`.
 2. GitHub > **Settings > Environments > `publish` > Environment secrets**: add `COSIGN_PRIVATE_KEY` (the contents of `cosign.key`) and
    `COSIGN_PASSWORD`. Keep `cosign.key` and the password in your password manager and delete the local copy.
-3. Send the contents of `cosign.pub` (public) to be committed; the host policy uses it.
+3. Commit `cosign.pub` (public) to the repository root; the host policy uses it.
 
-Until step 2 is done the signing step only warns (`COSIGN_PRIVATE_KEY is not set`) and the images are unsigned.
+Without the secrets the build on `main` fails at the signing step.
 
 ## Check a signature
 
@@ -31,12 +31,19 @@ Until step 2 is done the signing step only warns (`COSIGN_PRIVATE_KEY is not set
 cosign verify --key cosign.pub --insecure-ignore-tlog=true ghcr.io/cthtrifork/github-runner-bootc:latest
 ```
 
-## Rolling it out to the hosts
+## On the hosts
 
-1. This step: sign every build of `main`. Hosts enforce nothing yet.
-2. After a signed release exists and the check above passes: ship `cosign.pub`, `/etc/containers/policy.json` (requires a
-   `sigstoreSigned` signature with `signedIdentity: matchRepository` for our two images) and a `registries.d` entry with
-   `use-sigstore-attachments: true`, and make signing mandatory in `build.yaml`. A host moves to that release with its old policy, then enforces it.
+The image ships `cosign.pub` (`/usr/share/github-runner/cosign.pub`), `/etc/containers/policy.json` and
+`/etc/containers/registries.d/github-runner.yaml`. The policy requires a `sigstoreSigned` signature from that key
+(`signedIdentity: matchRepository`, which is what cosign signatures can express) for `ghcr.io/cthtrifork/github-runner-bootc` and
+`ghcr.io/cthtrifork/offline-github-runner-bootc`, and accepts every other image (the official runner image, for one).
+`bootc upgrade`, `bootc switch` and `podman pull` all use it, so an unsigned image of ours, including an older tag from before
+signing, is refused with "A signature was required, but no signature exists".
+
+- Signing is mandatory in `build.yaml` on `main`: a build without the secrets fails instead of shipping an image the hosts reject.
+- A host moves to the first release with this policy under its old policy; from then on it enforces it.
+- A site that mirrors the images under another registry name is not covered (the policy matches our repository names): copy the
+  signatures with the images and add the same entries for the mirror.
 
 ## Rotating the key
 

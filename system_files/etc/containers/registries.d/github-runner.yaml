@@ -1,0 +1,4 @@
+# the signatures of the OS images are tags of the package: read them (see /etc/containers/policy.json)
+docker:
+  ghcr.io/cthtrifork:
+    use-sigstore-attachments: true
