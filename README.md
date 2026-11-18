@@ -7,13 +7,13 @@
 [![Last commit](https://img.shields.io/github/last-commit/cthtrifork/github-runner-bootc/main?label=last%20commit)](https://github.com/cthtrifork/github-runner-bootc/commits/main)
 
 A [bootc](https://containers.github.io/bootc/) image (Fedora 45, x86_64) that turns a VM or a bare-metal host into
-ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh container from the
-[ARC runner image](https://github.com/cthtrifork/talos-gitops).
+ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh container from the official
+[GitHub Actions runner image](https://github.com/actions/runner/pkgs/container/actions-runner).
 
 | Image | Runner image | Download (compressed) | Installer ISO | Use it when | Links |
 |---|---|---|---|---|---|
-| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | 1.0 GiB, then 2.9 GiB on the first boot: 3.9 GiB | 2.2 GiB | the host can reach a registry or a mirror | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/github-runner-bootc) |
-| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image | 3.9 GiB, nothing more to pull | about 5 GiB (estimate) | the host has no registry or network (airgap) | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/offline-github-runner-bootc) |
+| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | 1.0 GiB, then 0.5 GiB on the first boot: 1.5 GiB | [2.2 GiB](https://shared-files.portableinfo.cloud/github-runner-latest.iso) | the host can reach a registry or a mirror | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/github-runner-bootc) |
+| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image | 1.5 GiB, nothing more to pull | [2.7 GiB](https://shared-files.portableinfo.cloud/github-runner-offline-latest.iso) | the host has no registry or network (airgap) | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/offline-github-runner-bootc) |
 
 The total is the same: the offline image only moves the runner image from the first boot into the OS image. Sizes are the
 compressed registry sizes of the latest release; the installed system and the jobs' images and builds need much more disk,
@@ -26,7 +26,7 @@ so plan for tens of GiB.
 | Default | 11 GiB: OS 2, runner image 8 | 13 GiB: the staged image doubles the OS | 60 GiB |
 | Offline | 14 GiB: OS 5, runner image 8 | 19 GiB: the staged image doubles the OS | 60 GiB |
 
-A new runner image version briefly needs another 8 GiB while it replaces the old one. The jobs' own images and builds
+The installed sizes above were measured with the previous, larger runner image (2.9 GiB compressed); the official one is 0.5 GiB, so expect less. A new runner image version briefly needs space for a second copy of it while it replaces the old one. The jobs' own images and builds
 need space too (an estimate: 20 GiB per runner instance, `--instances`), so add that to the 60 GiB.
 
 Both are published with every build of `main` and the weekly rebuild: see the [releases](https://github.com/cthtrifork/github-runner-bootc/releases)
@@ -57,9 +57,10 @@ flowchart LR
 ## Use it
 
 1. **Install:** write the raw disk image to the disk with `dd`, or run `bootc switch` to one of the images above on a
-   host that already runs bootc. An installer ISO is experimental (see #20 and [Build a disk image yourself](#build-a-disk-image-yourself)); every release
-   replaces them at stable URLs: `https://shared-files.portableinfo.cloud/github-runner-latest.iso` (default image) and
-   `.../github-runner-offline-latest.iso` (offline image). There are no versioned copies.
+   host that already runs bootc. An installer ISO is experimental (see #20): every release replaces it at a stable URL, with no versioned copies.
+   Download [`github-runner-latest.iso`](https://shared-files.portableinfo.cloud/github-runner-latest.iso) (default image) or
+   [`github-runner-offline-latest.iso`](https://shared-files.portableinfo.cloud/github-runner-offline-latest.iso) (offline image),
+   write it to a USB stick and boot it. To build a disk yourself, see [Build a disk image yourself](#build-a-disk-image-yourself).
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
    ```
