@@ -1,0 +1,32 @@
+#!/usr/bin/bash
+# Encrypt the GitHub App key at rest: seal /etc/github-runner/private-key.pem with systemd-creds (to the TPM2 when the host
+# has one, else to the host key), make the runner units load it as a credential, and remove the plaintext.
+# github-runner-seed-app runs this; run it by hand on a host that was seeded before (it needs no argument).
+#
+# What this protects: a copy of the disk, a VM snapshot or a backup. It does NOT protect against a job: the runner container is
+# privileged, so a job is root on the host and can decrypt the credential the same way the unit does (see the README).
+set -euo pipefail
+
+[[ $EUID -eq 0 ]] || { echo "Run as root: sudo $0" >&2; exit 1; }
+
+dir=/etc/github-runner
+pem="$dir/private-key.pem"
+cred="$dir/private-key.cred"
+dropin=/etc/systemd/system/github-runner@.service.d/10-app-key.conf
+
+[[ -r "$pem" ]] || { echo "No $pem to encrypt (already encrypted, or the host is not seeded)." >&2; exit 1; }
+
+systemd-creds setup >/dev/null 2>&1 || true # creates the host key if it does not exist yet
+tmp="$(mktemp "$dir/.private-key.cred.XXXXXX")"
+trap 'rm -f "$tmp"' EXIT
+systemd-creds encrypt --name=app-key "$pem" "$tmp"
+# prove that it decrypts to the same key before the plaintext goes
+systemd-creds decrypt --name=app-key "$tmp" - | cmp -s - "$pem" || { echo "The encrypted key does not decrypt to the original; keeping $pem." >&2; exit 1; }
+chmod 0600 "$tmp"
+mv -f "$tmp" "$cred"
+
+install -d /etc/systemd/system/github-runner@.service.d
+printf '[Service]\nLoadCredentialEncrypted=app-key:%s\n' "$cred" >"$dropin"
+systemctl daemon-reload
+rm -f "$pem"
+echo "App key encrypted in $cred; the runner units load it as a credential. Plaintext removed."

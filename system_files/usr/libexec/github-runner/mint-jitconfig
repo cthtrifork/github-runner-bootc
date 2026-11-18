@@ -1,6 +1,7 @@
 #!/usr/bin/bash
 # ExecStartPre of github-runner@<instance>: trade the GitHub App key for a single-use JIT runner configuration.
-# Reads /etc/github-runner/{app-id,installation-id,private-key.pem,config}, written by github-runner-seed-app.
+# Reads /etc/github-runner/{app-id,installation-id,config} and the App key, written by github-runner-seed-app. The key is the
+# credential `app-key` that the unit loaded from private-key.cred (encrypted at rest); a host seeded before that has private-key.pem.
 set -euo pipefail
 
 inst="${1:?Usage: $0 <instance>}"
@@ -21,12 +22,17 @@ LABELS="${LABELS:-self-hosted,Linux,X64,bootc}"
 
 b64url() { openssl base64 -A | tr '+/' '-_' | tr -d '='; }
 
+key="$dir/private-key.pem"
+if [[ -n "${CREDENTIALS_DIRECTORY:-}" && -r "$CREDENTIALS_DIRECTORY/app-key" ]]; then
+    key="$CREDENTIALS_DIRECTORY/app-key"
+fi
+
 app_id="$(tr -d '[:space:]' <"$dir/app-id")"
 installation_id="$(tr -d '[:space:]' <"$dir/installation-id")"
 now="$(date +%s)"
 header="$(printf '{"alg":"RS256","typ":"JWT"}' | b64url)"
 payload="$(printf '{"iat":%d,"exp":%d,"iss":"%s"}' $((now - 60)) $((now + 540)) "$app_id" | b64url)"
-signature="$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$dir/private-key.pem" | b64url)"
+signature="$(printf '%s.%s' "$header" "$payload" | openssl dgst -sha256 -sign "$key" | b64url)"
 
 gh_api() { # <method> <path> [json body]; the credential goes in on stdin, never in the process list
     printf 'Authorization: Bearer %s\n' "$AUTH" | curl -fsS --max-time 30 -X "$1" \

@@ -6,7 +6,9 @@ After=network-online.target
 Requires=github-runner-image-load.service
 After=github-runner-image-load.service
 # Idle until github-runner-seed-app has stored the GitHub App credentials.
-ConditionPathExists=/etc/github-runner/private-key.pem
+# (the App key: encrypted since github-runner-encrypt-key, plaintext on a host seeded before)
+ConditionPathExists=|/etc/github-runner/private-key.cred
+ConditionPathExists=|/etc/github-runner/private-key.pem
 # a failed JIT mint (no route to GitHub yet) must keep retrying, never hit the start limit
 StartLimitIntervalSec=0
 

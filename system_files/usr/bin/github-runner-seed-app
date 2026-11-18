@@ -56,6 +56,8 @@ MIN_FREE_GB=10
 ISOLATE_JOBS=$isolate
 DISK_QUOTA_GB=$quota_gb"
 echo "Credentials stored in $dir (root-only, 0600)."
+# encrypt the App key at rest (TPM2 when there is one, else the host key); on failure the 0600 file stays
+github-runner-encrypt-key || echo "Warning: the App key could not be encrypted; it stays in $dir/private-key.pem (root-only, 0600)." >&2
 
 # Default resource limits: an equal share of the host per instance (85% of the memory, all CPUs). Written once, so edits
 # to the drop-in survive a re-seed; delete it to get fresh defaults.

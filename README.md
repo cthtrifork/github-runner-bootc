@@ -132,7 +132,10 @@ never point its own PR workflows at it.
 
 Because a job is root on the host, anything on the host is in reach of a job, so limit what it can steal and reach:
 
-- **The App key is the crown jewel.** It sits in `/etc/github-runner` and a job can read it. Use one App per host,
+- **The App key is the crown jewel.** `github-runner-seed-app` stores it encrypted with `systemd-creds` (sealed to the TPM2 when
+  the host has one, otherwise to a host key; `/etc/github-runner/private-key.cred`) and the runner units load it as a credential.
+  That protects a copy of the disk, a VM snapshot or a backup, **not** a job: the container is privileged, so a job is root and can
+  decrypt it the way the unit does. On a host seeded earlier, run `sudo github-runner-encrypt-key` once. Use one App per host,
   installed only on the repositories it serves. Prefer `--scope org:name` with a runner group limited to those
   repositories (it needs only the organization "Self-hosted runners" permission); a repository scope needs
   Administration: read and write, which lets a stolen key change repository settings. Rotate the key if a job
