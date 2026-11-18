@@ -64,7 +64,9 @@ Step by step, from the ISO to the first job: the [install guide](docs/install.md
    `bootc switch` to one of the images above on a host that already runs bootc. An installer ISO is experimental (see #20): every release replaces it at a stable URL, with no versioned copies.
    Download [`github-runner-bootc-latest.iso`](https://shared-files.portableinfo.cloud/github-runner-bootc-latest.iso) (default image) or
    [`github-runner-offline-bootc-latest.iso`](https://shared-files.portableinfo.cloud/github-runner-offline-bootc-latest.iso) (offline image),
-   write it to a USB stick and boot it. To build a disk yourself, see [Build a disk image yourself](#build-a-disk-image-yourself).
+   write it to a USB stick and boot it. Verify the download first (it needs the [GitHub CLI](https://cli.github.com/), logged in):
+   `gh attestation verify github-runner-bootc-latest.iso -R cthtrifork/github-runner-bootc`; the [install guide](docs/install.md#2-verify)
+   has the details. To build a disk yourself, see [Build a disk image yourself](#build-a-disk-image-yourself).
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
    ```
@@ -144,8 +146,9 @@ Because a job is root on the host, anything on the host is in reach of a job, so
 - **Restrict the network.** The host has no firewall: a job reaches the LAN, the host's services and any cloud metadata
   endpoint. Put the host on its own VLAN or add egress rules that allow GitHub, your registries and nothing else.
 - **Verify what you boot.** The host ships no signature policy yet (see #42): enforce one with `/etc/containers/policy.json`
-  and `registries.d`. The releases carry build provenance and SBOM attestations (`gh attestation verify`, see
-  [Testing](docs/testing.md)). The runner image is pinned by tag and the Fedora base image floats, on purpose, so the weekly
+  and `registries.d`. The images carry build provenance and SBOM attestations, and every ISO a build provenance attestation
+  (`gh attestation verify`, see [Testing](docs/testing.md)); the SHA-256 of an ISO is in the summary of the `Create ISO` run that
+  built it and is printed by `gh attestation verify`. The runner image is pinned by tag and the Fedora base image floats, on purpose, so the weekly
   rebuild picks up fixes; updates are applied nightly without a human in the loop.
 - **Resource limits.** Each runner container has a process limit (`--pids-limit=8192`). `github-runner-seed-app` also
   writes `/etc/containers/systemd/github-runner@.container.d/20-limits.conf` once, with `MemoryMax=` (85% of the memory)
