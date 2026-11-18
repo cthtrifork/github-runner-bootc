@@ -5,7 +5,7 @@ These GitHub settings cannot be set from the code. `cthtrifork` is a personal ac
 ## 1. Check the runner scale set
 
 ```bash
-flux get helmrelease -n arc-runners-system arc-runners-bootc-files
+flux get helmrelease -n arc-runners-system arc-runners-bootc-files arc-runners-bootc-iso
 kubectl -n arc-runners-system get autoscalingrunnerset arc-files-bootc arc-iso-bootc
 ```
 
@@ -22,7 +22,7 @@ add the branch rule `main`. A reviewer would add a click but no protection: a PR
 |---|---|---|
 | `publish` | pushes to main, weekly rebuild | main only |
 | `publish-pr` | PRs labelled `push`, `e2e`, `e2e-live` | any |
-| `file-upload` | manual disk image / ISO upload | main only |
+| `file-upload` | manual disk image upload, and the ISO `publish` job | main only |
 
 ## 3. Repository settings
 
@@ -36,12 +36,15 @@ them. Keep write access to the repository to yourself.
 ## 4. First runs
 
 - **PR image**: add the label `push`.
-- **Upload**: **Actions > Create disk image > Run workflow** on `main` (tag `latest`, variant `offline`, your public SSH key). The first run starts the runner pod (about a minute). The file is then at
+- **Disk image upload**: **Actions > Create disk image > Run workflow** on `main` (tag `latest`, variant `offline`, your public SSH key). The first run starts the runner pod (about a minute). The file is then at
   `https://shared-files.portableinfo.cloud/<name>` (the name is in the run summary).
+- **ISOs**: every release builds both and replaces `github-runner-bootc-latest.iso` and `github-runner-offline-bootc-latest.iso`. To run one by hand:
+  **Actions > Create ISO > Run workflow** on `main` with the tag `latest` or a release tag (`latest-<runner version>-<date>-<n>`) and the variant.
+  The build takes about 20 minutes. The file server should hold only those two files: delete any other ISO on its admin page.
 
 | Symptom | Cause |
 |---|---|
-| `upload` waits for a runner | scale set not registered (step 1) |
+| `upload` (disk) or `Build and upload the ISO` waits for a runner | scale set not registered (step 1), or the ISO runner cannot be scheduled on the file server's node |
 | curl `401` | the pod started before the token existed: re-run |
 | curl `422` | SHA-256 mismatch, truncated download: re-run |
 | curl `507` / `413` | file server disk full, or over `MAX_FILE_BYTES` (8 GiB) |
