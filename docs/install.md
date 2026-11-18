@@ -31,7 +31,16 @@ check was added have no attestation.
    (check `sdX` with `lsblk` first: it is overwritten), or attach it to the virtual machine.
 2. Boot the machine from it. The installer (Fedora's Anaconda) asks for the target disk, the network and an administrator
    account. Make the account an administrator, so that it can use `sudo`. No user, password or key is baked into the image.
-3. Reboot into the installed system and log in as that account (console or SSH).
+3. Reboot into the installed system and log in as that account (see below).
+
+### Logging in
+
+- **Console:** on bare metal, the keyboard and screen, or the machine's remote console (IPMI/BMC, or the hypervisor's console for a VM).
+- **SSH:** `sshd` is enabled: `ssh <account>@<host>`. A disk written with `bootc install ... --root-ssh-authorized-keys` (see [Build a disk image yourself](../README.md#build-a-disk-image-yourself))
+  also lets `root` in with that key.
+- **sudo:** the installer's administrator account is in the `wheel` group, which can use `sudo`.
+- A login shell shows how to seed the host until the runners are seeded (step 5), then stops.
+- Nothing is baked into the image: no user, password or SSH key. If you lose access, reinstall.
 
 ## 4. Create the GitHub App
 

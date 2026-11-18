@@ -24,6 +24,9 @@ if systemctl is-active --quiet 'github-runner@1.service'; then
     exit 1
 fi
 
+echo "--- first-login hint ---"
+test -r /etc/profile.d/github-runner-hint.sh
+
 echo "--- signature policy ---"
 # our OS images must be signed by the key in the image; everything else is accepted
 for img in github-runner-bootc offline-github-runner-bootc; do
