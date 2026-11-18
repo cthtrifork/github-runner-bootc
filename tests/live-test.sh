@@ -8,6 +8,8 @@ case "${1:?Usage: $0 seed|wait|cleanup}" in
 seed)
     printf '%s\n' "$RUNNER_APP_PRIVATE_KEY" | "$vm" \
         "github-runner-seed-app --scope repo:${GITHUB_REPOSITORY} --app-id ${RUNNER_APP_CLIENT_ID} --installation-id ${RUNNER_INSTALLATION_ID} --labels self-hosted,Linux,X64,bootc,e2e-${RUN_ID}"
+    # the App key is encrypted at rest: no plaintext file, a credential the units load
+    "$vm" "test ! -e /etc/github-runner/private-key.pem && test -s /etc/github-runner/private-key.cred && grep -q '^LoadCredentialEncrypted=app-key:' /etc/systemd/system/github-runner@.service.d/10-app-key.conf"
     ;;
 wait)
     for _ in $(seq 1 40); do

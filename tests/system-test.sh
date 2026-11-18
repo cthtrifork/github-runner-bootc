@@ -7,7 +7,7 @@ echo "== System testing (github-runner-bootc) =="
 id
 
 echo "--- tools ---"
-for c in podman skopeo xfs_quota nft nsenter jq curl openssl bootc github-runner-seed-app; do
+for c in podman skopeo xfs_quota nft nsenter jq curl openssl bootc github-runner-seed-app github-runner-encrypt-key systemd-creds; do
     command -v "$c" >/dev/null || { echo "missing: $c"; exit 1; }
 done
 for f in mint-jitconfig prepare-instance update-and-drain prune docker-nat container-entrypoint; do

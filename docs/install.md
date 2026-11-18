@@ -66,7 +66,7 @@ Copy the key to the host (`scp key.pem <user>@<host>:`), then on the host:
 sudo github-runner-seed-app --scope repo:owner/name --app-id <Client ID> --installation-id <id> key.pem
 ```
 
-Use `--scope org:name` for an organization. The key is read from the file (or stdin), stored root-only in
+Use `--scope org:name` for an organization. The key is read from the file (or stdin), encrypted (`systemd-creds`, TPM2 when there is one) in
 `/etc/github-runner`, and the runner instances start. Delete the `.pem` from the host afterwards.
 
 | Option | What it does |
