@@ -9,15 +9,16 @@ accepts an email identity. A GitHub Actions certificate names a workflow, not an
 
 ## How it works
 
-- The `publish` job of `build.yaml` signs the pushed digest with `cosign sign --key` (cosign **v2**, which writes the `sha256-<digest>.sig`
-  tag that podman and bootc read; v3 writes a bundle format they do not). No transparency log upload: the host needs no Rekor.
+- The `publish` job of `build.yaml` signs the pushed digest with cosign **v3** in its legacy format (`--new-bundle-format=false`
+  and `--registry-referrers-mode=legacy`), which writes the `sha256-<digest>.sig` tag that podman and bootc read. The
+  `--use-signing-config=false` option preserves the explicit no-transparency-log-upload setting; the host needs no Rekor.
 - The private key and its password are secrets of the environment `publish` (main only). A pull request build runs in
   `publish-pr`, never has them and is not signed.
 - The signature is a tag of the package, so the cleanup workflows keep every `sha256-*` tag.
 
 ## Set it up (once)
 
-1. On a machine you trust, with cosign v2: `cosign generate-key-pair`. Choose a password. It writes `cosign.key` (encrypted) and `cosign.pub`.
+1. On a machine you trust, with cosign v3: `cosign generate-key-pair`. Choose a password. It writes `cosign.key` (encrypted) and `cosign.pub`.
 2. GitHub > **Settings > Environments > `publish` > Environment secrets**: add `COSIGN_PRIVATE_KEY` (the contents of `cosign.key`) and
    `COSIGN_PASSWORD`. Keep `cosign.key` and the password in your password manager and delete the local copy.
 3. Send the contents of `cosign.pub` (public) to be committed; the host policy uses it.

@@ -261,7 +261,7 @@ jobs:
         if: ${{ github.event_name != 'pull_request' }}
         uses: sigstore/cosign-installer@756fe2d284c7292c4e9b62c8a28f1e5629c59532 # v4.1.3
         with:
-          cosign-release: v3.1.4 # v2 on purpose: it writes the `.sig` tag that containers/image reads, v3 writes a bundle format it does not
+          cosign-release: v3.1.4 # keep legacy signature format for containers/image
 
       - name: Sign the image
         if: ${{ github.event_name != 'pull_request' }}
@@ -275,7 +275,12 @@ jobs:
             echo "::warning::COSIGN_PRIVATE_KEY is not set in the environment publish: this image is not signed"
             exit 0
           fi
-          cosign sign --yes --key env://COSIGN_PRIVATE_KEY --tlog-upload=false "$IMAGE@$DIGEST"
+          cosign sign --yes --key env://COSIGN_PRIVATE_KEY \
+            --tlog-upload=false \
+            --new-bundle-format=false \
+            --use-signing-config=false \
+            --registry-referrers-mode=legacy \
+            "$IMAGE@$DIGEST"
           echo "Signed \`$IMAGE@$DIGEST\`" >> "$GITHUB_STEP_SUMMARY"
 
       # All CRITICAL/HIGH vulnerabilities, including ones with no fix yet; report only (the weekly rebuild picks fixes up), so a new CVE in a base package does not turn every PR red.
