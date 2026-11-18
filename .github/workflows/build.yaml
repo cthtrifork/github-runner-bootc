@@ -602,8 +602,8 @@ jobs:
           } > notes.md
           gh release edit "$TAG" --notes-file notes.md
 
-  # The installer ISOs of the release (default and offline image) replace github-runner-latest.iso and
-  # github-runner-offline-latest.iso on the file server. They wait for the release, so a failed build or release leaves them as they were.
+  # The installer ISOs of the release (default and offline image) replace github-runner-bootc-latest.iso and
+  # github-runner-offline-bootc-latest.iso on the file server. They wait for the release, so a failed build or release leaves them as they were.
   iso:
     name: Installer ISO (${{ matrix.variant }})
     needs: [build, release]

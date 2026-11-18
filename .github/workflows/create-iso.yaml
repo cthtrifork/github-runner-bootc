@@ -3,7 +3,7 @@ name: Create ISO
 # Builds an installer ISO of a published image with bootc-image-builder. A manual run on main and the release in
 # build.yaml (which calls this workflow) build it on the cluster runner `arc-iso-bootc` (talos-gitops) and upload it from
 # there to the file server (public downloads from Cloudflare R2), so the 5 GiB ISO is never downloaded. The file server only
-# ever holds `github-runner-latest.iso` and `github-runner-offline-latest.iso`: each release replaces its own (atomically),
+# ever holds `github-runner-bootc-latest.iso` and `github-runner-offline-bootc-latest.iso`: each release replaces its own (atomically),
 # and a failed build never touches it. The `iso` PR label instead builds an ISO with an unattended kickstart on a GitHub runner,
 # installs it in QEMU and runs the system tests on the installed disk; the PR image must exist already (labels `push`
 # or `e2e` publish it).
@@ -162,8 +162,7 @@ jobs:
           FILESERVER_URL="${FILESERVER_URL:-http://fileserver-upload.fileserver-system.svc:8082}"
           file=out/bootiso/install.iso
           # the default image keeps the plain name; the offline image has `offline` in it
-          prefix=github-runner; [[ "$VARIANT" == offline ]] && prefix=github-runner-offline
-          name="${prefix}-latest.iso"
+          name=github-runner-bootc-latest.iso; [[ "$VARIANT" == offline ]] && name=github-runner-offline-bootc-latest.iso
           sha="$(sha256sum "$file" | cut -d' ' -f1)"
           # the same name replaces the file, written atomically on the server
           curl --fail --retry 3 --max-time 3600 -T "$file" -H "Authorization: Bearer $FILESERVER_TOKEN" -H "X-Content-SHA256: $sha" \

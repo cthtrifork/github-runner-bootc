@@ -38,7 +38,7 @@ them. Keep write access to the repository to yourself.
 - **PR image**: add the label `push`.
 - **Disk image upload**: **Actions > Create disk image > Run workflow** on `main` (tag `latest`, variant `offline`, your public SSH key). The first run starts the runner pod (about a minute). The file is then at
   `https://shared-files.portableinfo.cloud/<name>` (the name is in the run summary).
-- **ISOs**: every release builds both and replaces `github-runner-latest.iso` and `github-runner-offline-latest.iso`. To run one by hand:
+- **ISOs**: every release builds both and replaces `github-runner-bootc-latest.iso` and `github-runner-offline-bootc-latest.iso`. To run one by hand:
   **Actions > Create ISO > Run workflow** on `main` with the tag `latest` or a release tag (`latest-<runner version>-<date>-<n>`) and the variant.
   The build takes about 20 minutes. The file server should hold only those two files: delete any other ISO on its admin page.
 

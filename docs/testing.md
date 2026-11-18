@@ -69,8 +69,8 @@ and runs `tests/system-test.sh`. The ISO that is published is the interactive on
   the talos-gitops scale set `arc-files-bootc` (environment `file-upload`, branch `main`) and PUTs it, public, to the file server;
   Cloudflare R2 serves it. The token is the runner's own `FILESERVER_TOKEN`, not a repository secret.
 - ISOs: built and uploaded on the privileged scale set `arc-iso-bootc` (`runs-on` of the `publish` job in `create-iso.yaml`), so the
-  multi-GiB ISO is never downloaded from GitHub. The file server only ever holds `github-runner-latest.iso` and
-  `github-runner-offline-latest.iso`; a release replaces its own. The Containerfile pins the Fedora repos to `mirrors.dotsrc.org`, the only Fedora host the cluster allows.
+  multi-GiB ISO is never downloaded from GitHub. The file server only ever holds `github-runner-bootc-latest.iso` and
+  `github-runner-offline-bootc-latest.iso`; a release replaces its own. The Containerfile pins the Fedora repos to `mirrors.dotsrc.org`, the only Fedora host the cluster allows.
 - Verify a release by identity: `gh attestation verify oci://<image>@<digest> -R cthtrifork/github-runner-bootc --signer-workflow cthtrifork/github-runner-bootc/.github/workflows/build.yaml --source-ref refs/heads/main`
 
 ## Lessons

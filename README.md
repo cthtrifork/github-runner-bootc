@@ -14,8 +14,8 @@ ephemeral self-hosted GitHub Actions runners. Every job runs in a fresh containe
 
 | Image | Runner image | Download (compressed) | Installer ISO | Use it when | Links |
 |---|---|---|---|---|---|
-| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | 1.0 GiB, then 0.5 GiB on the first boot: 1.5 GiB | [2.2 GiB](https://shared-files.portableinfo.cloud/github-runner-latest.iso) | the host can reach a registry or a mirror | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/github-runner-bootc) |
-| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image | 1.5 GiB, nothing more to pull | [2.7 GiB](https://shared-files.portableinfo.cloud/github-runner-offline-latest.iso) | the host has no registry or network (airgap) | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/offline-github-runner-bootc) |
+| `ghcr.io/cthtrifork/github-runner-bootc` | pulled once on the first boot | 1.0 GiB, then 0.5 GiB on the first boot: 1.5 GiB | [2.2 GiB](https://shared-files.portableinfo.cloud/github-runner-bootc-latest.iso) | the host can reach a registry or a mirror | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/github-runner-bootc) |
+| `ghcr.io/cthtrifork/offline-github-runner-bootc` | embedded in the OS image | 1.5 GiB, nothing more to pull | [2.7 GiB](https://shared-files.portableinfo.cloud/github-runner-offline-bootc-latest.iso) | the host has no registry or network (airgap) | [package](https://github.com/cthtrifork/github-runner-bootc/pkgs/container/offline-github-runner-bootc) |
 
 The total is the same: the offline image only moves the runner image from the first boot into the OS image. Sizes are the
 compressed registry sizes of the latest release; the installed system and the jobs' images and builds need much more disk,
@@ -60,8 +60,8 @@ flowchart LR
 
 1. **Install:** boot the installer ISO, write a raw disk image to the disk with `dd` (you build it, see below), or run
    `bootc switch` to one of the images above on a host that already runs bootc. An installer ISO is experimental (see #20): every release replaces it at a stable URL, with no versioned copies.
-   Download [`github-runner-latest.iso`](https://shared-files.portableinfo.cloud/github-runner-latest.iso) (default image) or
-   [`github-runner-offline-latest.iso`](https://shared-files.portableinfo.cloud/github-runner-offline-latest.iso) (offline image),
+   Download [`github-runner-bootc-latest.iso`](https://shared-files.portableinfo.cloud/github-runner-bootc-latest.iso) (default image) or
+   [`github-runner-offline-bootc-latest.iso`](https://shared-files.portableinfo.cloud/github-runner-offline-bootc-latest.iso) (offline image),
    write it to a USB stick and boot it. To build a disk yourself, see [Build a disk image yourself](#build-a-disk-image-yourself).
 2. **Seed the GitHub App** (Administration: read and write; the key never goes into the image):
 
